@@ -10,6 +10,7 @@ progetto, ed è testabile senza mock.
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
@@ -87,3 +88,140 @@ def parse_esearch_xml(xml: str) -> SearchResult:
             f"{child.tag}: {_text(child)}" for child in root.findall("./ErrorList/*")
         ],
     )
+
+
+@dataclass(frozen=True)
+class Article:
+    """Un record PubMed.
+
+    `abstract` è None quando l'articolo non ne ha uno, mai stringa vuota: il
+    filtro semantico deve poter distinguere «non posso giudicare» da «vuoto».
+
+    `pub_date` resta una stringa ISO parziale ("2024", "2024-03", "2024-03-15")
+    perché PubMed ha date genuinamente incomplete; un oggetto date costringerebbe
+    a inventare mese e giorno.
+    """
+
+    pmid: str
+    title: str
+    abstract: str | None
+    authors: list[str]
+    journal: str
+    pub_date: str
+    pub_types: list[str]
+    mesh_terms: list[str]
+    doi: str | None
+
+
+_MESI = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _mese(valore: str) -> int | None:
+    """Accetta sia "Mar" sia "03"; restituisce None se il mese manca o è ignoto."""
+    if not valore:
+        return None
+    if valore.isdigit():
+        numero = int(valore)
+        return numero if 1 <= numero <= 12 else None
+    return _MESI.get(valore[:3].lower())
+
+
+def _pub_date(node: ET.Element | None) -> str:
+    if node is None:
+        return ""
+    medline = _text(node.find("MedlineDate"))
+    if medline:
+        # Formati liberi come "2024 Mar-Apr" o "1998 Winter": si tiene solo l'anno.
+        trovato = re.search(r"\b(\d{4})\b", medline)
+        return trovato.group(1) if trovato else ""
+    anno = _text(node.find("Year"))
+    if not anno:
+        return ""
+    mese = _mese(_text(node.find("Month")))
+    if mese is None:
+        return anno
+    giorno = _text(node.find("Day"))
+    if not giorno.isdigit():
+        return f"{anno}-{mese:02d}"
+    return f"{anno}-{mese:02d}-{int(giorno):02d}"
+
+
+def _abstract(node: ET.Element | None) -> str | None:
+    if node is None:
+        return None
+    parti = []
+    for el in node.findall("AbstractText"):
+        testo = _text(el)
+        if not testo:
+            continue
+        etichetta = (el.get("Label") or "").strip()
+        parti.append(f"{etichetta}: {testo}" if etichetta else testo)
+    return "\n\n".join(parti) or None
+
+
+def _autori(node: ET.Element | None) -> list[str]:
+    if node is None:
+        return []
+    autori = []
+    for el in node.findall("Author"):
+        collettivo = _text(el.find("CollectiveName"))
+        if collettivo:
+            autori.append(collettivo)
+            continue
+        cognome = _text(el.find("LastName"))
+        nome = _text(el.find("ForeName")) or _text(el.find("Initials"))
+        completo = " ".join(p for p in (nome, cognome) if p)
+        if completo:
+            autori.append(completo)
+    return autori
+
+
+def _doi(article: ET.Element, pubmed_article: ET.Element) -> str | None:
+    for el in article.findall("ELocationID"):
+        if el.get("EIdType") == "doi":
+            return _text(el) or None
+    for el in pubmed_article.findall("./PubmedData/ArticleIdList/ArticleId"):
+        if el.get("IdType") == "doi":
+            return _text(el) or None
+    return None
+
+
+def parse_efetch_xml(xml: str) -> list[Article]:
+    """I record <PubmedBookArticle> (libri) vengono ignorati: fuori ambito per l'MVP."""
+    root = _root(xml)
+    articoli = []
+    for pubmed_article in root.findall(".//PubmedArticle"):
+        citazione = pubmed_article.find("MedlineCitation")
+        if citazione is None:
+            continue
+        pmid = _text(citazione.find("PMID"))
+        if not pmid:
+            raise PubMedParseError("<MedlineCitation> priva di <PMID>")
+        article = citazione.find("Article")
+        if article is None:
+            raise PubMedParseError(f"PMID {pmid}: <Article> mancante")
+        articoli.append(
+            Article(
+                pmid=pmid,
+                title=_text(article.find("ArticleTitle")),
+                abstract=_abstract(article.find("Abstract")),
+                authors=_autori(article.find("AuthorList")),
+                journal=_text(article.find("./Journal/Title")),
+                pub_date=_pub_date(article.find("./Journal/JournalIssue/PubDate")),
+                pub_types=[
+                    _text(el)
+                    for el in article.findall("./PublicationTypeList/PublicationType")
+                ],
+                mesh_terms=[
+                    _text(el)
+                    for el in citazione.findall(
+                        "./MeshHeadingList/MeshHeading/DescriptorName"
+                    )
+                ],
+                doi=_doi(article, pubmed_article),
+            )
+        )
+    return articoli
