@@ -73,9 +73,13 @@ def parse_esearch_xml(xml: str) -> SearchResult:
     count = root.findtext("Count")
     if count is None:
         raise PubMedParseError("Risposta ESearch priva di <Count>")
+    try:
+        total_count = int(count)
+    except ValueError as exc:
+        raise PubMedParseError(f"Valore di <Count> non numerico: {count!r}") from exc
     return SearchResult(
         pmids=[t for t in (_text(el) for el in root.findall("./IdList/Id")) if t],
-        total_count=int(count),
+        total_count=total_count,
         translated_query=_text(root.find("QueryTranslation")) or None,
         webenv=_text(root.find("WebEnv")) or None,
         query_key=_text(root.find("QueryKey")) or None,

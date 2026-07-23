@@ -108,3 +108,9 @@ def test_search_result_e_immutabile():
     result = parse_esearch_xml(ESEARCH_BASE)
     with pytest.raises(Exception):
         result.total_count = 99
+
+
+def test_count_non_numerico_solleva_parse_error():
+    xml = "<eSearchResult><Count>abc</Count></eSearchResult>"
+    with pytest.raises(PubMedParseError, match="Valore di <Count> non numerico"):
+        parse_esearch_xml(xml)
