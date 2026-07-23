@@ -221,3 +221,116 @@ def test_citazione_senza_pmid_solleva_parse_error():
     </MedlineCitation></PubmedArticle></PubmedArticleSet>"""
     with pytest.raises(PubMedParseError, match="PMID"):
         parse_efetch_xml(xml)
+
+
+EFETCH_CASI_LIMITE = """<?xml version="1.0" encoding="UTF-8" ?>
+<PubmedArticleSet>
+<PubmedArticle>
+  <MedlineCitation>
+    <PMID Version="1">30000001</PMID>
+    <Article>
+      <Journal>
+        <JournalIssue><PubDate><Year>2019</Year><Month>07</Month></PubDate></JournalIssue>
+        <Title>Journal of Structured Abstracts</Title>
+      </Journal>
+      <ArticleTitle>Trial con abstract strutturato.</ArticleTitle>
+      <Abstract>
+        <AbstractText Label="BACKGROUND">Il melanoma metastatico ha prognosi infausta.</AbstractText>
+        <AbstractText Label="METHODS">Abbiamo randomizzato 300 pazienti.</AbstractText>
+        <AbstractText Label="RESULTS">La sopravvivenza è aumentata.</AbstractText>
+      </Abstract>
+      <AuthorList>
+        <Author><CollectiveName>The CheckMate Study Group</CollectiveName></Author>
+        <Author><LastName>Verdi</LastName><ForeName>Anna</ForeName></Author>
+      </AuthorList>
+    </Article>
+  </MedlineCitation>
+  <PubmedData>
+    <ArticleIdList>
+      <ArticleId IdType="pubmed">30000001</ArticleId>
+      <ArticleId IdType="doi">10.9999/fallback.doi</ArticleId>
+    </ArticleIdList>
+  </PubmedData>
+</PubmedArticle>
+<PubmedArticle>
+  <MedlineCitation>
+    <PMID Version="1">30000002</PMID>
+    <Article>
+      <Journal>
+        <JournalIssue><PubDate><Year>1975</Year></PubDate></JournalIssue>
+        <Title>Old Journal</Title>
+      </Journal>
+      <ArticleTitle>Articolo senza abstract né autori.</ArticleTitle>
+    </Article>
+  </MedlineCitation>
+</PubmedArticle>
+<PubmedArticle>
+  <MedlineCitation>
+    <PMID Version="1">30000003</PMID>
+    <Article>
+      <Journal>
+        <JournalIssue><PubDate><MedlineDate>1998 Mar-Apr</MedlineDate></PubDate></JournalIssue>
+        <Title>Seasonal Journal</Title>
+      </Journal>
+      <ArticleTitle>Data in formato MedlineDate.</ArticleTitle>
+      <Abstract><AbstractText Label="AIM"></AbstractText></Abstract>
+    </Article>
+  </MedlineCitation>
+</PubmedArticle>
+</PubmedArticleSet>
+"""
+
+
+@pytest.fixture
+def casi_limite():
+    return {a.pmid: a for a in parse_efetch_xml(EFETCH_CASI_LIMITE)}
+
+
+def test_abstract_strutturato_conserva_le_etichette(casi_limite):
+    abstract = casi_limite["30000001"].abstract
+    assert abstract == (
+        "BACKGROUND: Il melanoma metastatico ha prognosi infausta.\n\n"
+        "METHODS: Abbiamo randomizzato 300 pazienti.\n\n"
+        "RESULTS: La sopravvivenza è aumentata."
+    )
+
+
+def test_nome_collettivo_diventa_un_autore(casi_limite):
+    assert casi_limite["30000001"].authors == ["The CheckMate Study Group", "Anna Verdi"]
+
+
+def test_doi_di_riserva_da_article_id_list(casi_limite):
+    assert casi_limite["30000001"].doi == "10.9999/fallback.doi"
+
+
+def test_data_parziale_anno_mese(casi_limite):
+    assert casi_limite["30000001"].pub_date == "2019-07"
+
+
+def test_abstract_assente_e_none_non_stringa_vuota(casi_limite):
+    assert casi_limite["30000002"].abstract is None
+
+
+def test_autori_assenti_danno_lista_vuota(casi_limite):
+    assert casi_limite["30000002"].authors == []
+
+
+def test_doi_assente_e_none(casi_limite):
+    assert casi_limite["30000002"].doi is None
+
+
+def test_data_solo_anno(casi_limite):
+    assert casi_limite["30000002"].pub_date == "1975"
+
+
+def test_medline_date_riduce_all_anno(casi_limite):
+    assert casi_limite["30000003"].pub_date == "1998"
+
+
+def test_abstract_con_solo_etichette_vuote_e_none(casi_limite):
+    assert casi_limite["30000003"].abstract is None
+
+
+def test_ordine_dei_record_preservato():
+    articles = parse_efetch_xml(EFETCH_CASI_LIMITE)
+    assert [a.pmid for a in articles] == ["30000001", "30000002", "30000003"]
