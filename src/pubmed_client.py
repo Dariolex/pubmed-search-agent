@@ -203,3 +203,69 @@ class PubMedClient:
         raise PubMedHTTPError(
             f"{endpoint}: HTTP {ultimo_status} dopo {self._max_attempts} tentativi"
         )
+
+    def esearch(
+        self,
+        term: str,
+        *,
+        retmax: int = 100,
+        retstart: int = 0,
+        sort: str | None = None,
+        mindate: str | None = None,
+        maxdate: str | None = None,
+        datetype: str = "pdat",
+    ) -> SearchResult:
+        """Esegue una ricerca e restituisce PMID, conteggio e query tradotta da NCBI.
+
+        `retmax` limita quanti PMID vengono restituiti, non quanti ne esistono:
+        `SearchResult.total_count` riporta comunque i match reali.
+
+        `usehistory=y` è sempre attivo: fornisce WebEnv e query_key per paginare
+        senza rieseguire la query, evitando lo slittamento dei risultati.
+        """
+        params = {
+            "db": "pubmed",
+            "term": term,
+            "usehistory": "y",
+            "retmax": str(retmax),
+            "retstart": str(retstart),
+            "retmode": "xml",
+        }
+        if sort:
+            params["sort"] = sort
+        if mindate or maxdate:
+            params["datetype"] = datetype
+            if mindate:
+                params["mindate"] = mindate
+            if maxdate:
+                params["maxdate"] = maxdate
+        return parse_esearch_xml(self._request("esearch.fcgi", params))
+
+    def efetch(self, pmids: Sequence, *, batch_size: int = 200) -> list[Article]:
+        """Scarica gli abstract completi, preservando l'ordine dei PMID in input.
+
+        Usa POST perché oltre ~200 identificatori l'URL di una GET sfora i limiti.
+
+        Se un batch fallisce dopo tutti i tentativi l'eccezione si propaga: meglio
+        un errore esplicito che risultati incompleti su cui il filtro semantico
+        lavorerebbe senza saperlo.
+        """
+        ordinati = [str(p) for p in pmids]
+        if not ordinati:
+            return []
+        per_pmid: dict[str, Article] = {}
+        for inizio in range(0, len(ordinati), batch_size):
+            batch = ordinati[inizio : inizio + batch_size]
+            xml = self._request(
+                "efetch.fcgi",
+                {
+                    "db": "pubmed",
+                    "id": ",".join(batch),
+                    "rettype": "abstract",
+                    "retmode": "xml",
+                },
+                method="POST",
+            )
+            for articolo in parse_efetch_xml(xml):
+                per_pmid[articolo.pmid] = articolo
+        return [per_pmid[p] for p in ordinati if p in per_pmid]

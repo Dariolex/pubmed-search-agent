@@ -242,3 +242,112 @@ def test_post_invia_i_parametri_nel_corpo(client):
     assert "id=1%2C2" in inviata.body
     assert f"api_key={CHIAVE_FINTA}" in inviata.body
     assert CHIAVE_FINTA not in inviata.url
+
+
+EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+
+
+def _articolo_xml(pmid: str) -> str:
+    return f"""<PubmedArticle><MedlineCitation><PMID>{pmid}</PMID>
+    <Article><Journal><Title>J</Title>
+    <JournalIssue><PubDate><Year>2024</Year></PubDate></JournalIssue></Journal>
+    <ArticleTitle>Titolo {pmid}</ArticleTitle></Article>
+    </MedlineCitation></PubmedArticle>"""
+
+
+def _set_xml(*pmids: str) -> str:
+    return "<PubmedArticleSet>" + "".join(_articolo_xml(p) for p in pmids) + "</PubmedArticleSet>"
+
+
+@responses.activate
+def test_esearch_usa_usehistory_e_restituisce_search_result(client):
+    responses.add(
+        responses.GET,
+        ESEARCH_URL,
+        body="""<eSearchResult><Count>42</Count>
+        <WebEnv>MCID_x</WebEnv><QueryKey>1</QueryKey>
+        <IdList><Id>11</Id><Id>22</Id></IdList>
+        <QueryTranslation>melanoma[All Fields]</QueryTranslation></eSearchResult>""",
+        status=200,
+    )
+    risultato = client.esearch("melanoma", retmax=2)
+    assert risultato.total_count == 42
+    assert risultato.pmids == ["11", "22"]
+    assert risultato.translated_query == "melanoma[All Fields]"
+    inviata = responses.calls[0].request
+    assert "usehistory=y" in inviata.url
+    assert "retmax=2" in inviata.url
+    assert "db=pubmed" in inviata.url
+
+
+@responses.activate
+def test_esearch_invia_i_filtri_di_data_solo_se_presenti(client):
+    responses.add(responses.GET, ESEARCH_URL, body=XML_OK, status=200)
+    client.esearch("melanoma", mindate="2023", maxdate="2026")
+    inviata = responses.calls[0].request
+    assert "mindate=2023" in inviata.url
+    assert "maxdate=2026" in inviata.url
+    assert "datetype=pdat" in inviata.url
+
+
+@responses.activate
+def test_esearch_omette_datetype_senza_filtri_di_data(client):
+    responses.add(responses.GET, ESEARCH_URL, body=XML_OK, status=200)
+    client.esearch("melanoma")
+    assert "datetype" not in responses.calls[0].request.url
+
+
+@responses.activate
+def test_efetch_restituisce_articoli(client):
+    responses.add(responses.POST, EFETCH_URL, body=_set_xml("11", "22"), status=200)
+    articoli = client.efetch(["11", "22"])
+    assert [a.pmid for a in articoli] == ["11", "22"]
+    assert articoli[0].title == "Titolo 11"
+
+
+@responses.activate
+def test_efetch_riordina_secondo_i_pmid_in_input(client):
+    """NCBI restituisce nel proprio ordine: il ranking di ESearch va preservato."""
+    responses.add(responses.POST, EFETCH_URL, body=_set_xml("22", "11", "33"), status=200)
+    articoli = client.efetch(["33", "11", "22"])
+    assert [a.pmid for a in articoli] == ["33", "11", "22"]
+
+
+@responses.activate
+def test_efetch_tollera_pmid_mancanti(client):
+    """Record ritirati o rimossi: meno articoli del richiesto non è un errore."""
+    responses.add(responses.POST, EFETCH_URL, body=_set_xml("11"), status=200)
+    articoli = client.efetch(["11", "99999999"])
+    assert [a.pmid for a in articoli] == ["11"]
+
+
+@responses.activate
+def test_efetch_divide_in_batch_da_duecento(client):
+    pmids = [str(n) for n in range(1, 251)]
+    responses.add(responses.POST, EFETCH_URL, body=_set_xml(*pmids[:200]), status=200)
+    responses.add(responses.POST, EFETCH_URL, body=_set_xml(*pmids[200:]), status=200)
+    articoli = client.efetch(pmids)
+    assert len(responses.calls) == 2
+    assert len(articoli) == 250
+    assert [a.pmid for a in articoli] == pmids
+
+
+@responses.activate
+def test_efetch_solleva_se_un_batch_fallisce(client):
+    """Fail-fast: risultati silenziosamente incompleti sono peggio di un errore."""
+    pmids = [str(n) for n in range(1, 251)]
+    responses.add(responses.POST, EFETCH_URL, body=_set_xml(*pmids[:200]), status=200)
+    for _ in range(3):
+        responses.add(responses.POST, EFETCH_URL, status=500)
+    with pytest.raises(PubMedHTTPError):
+        client.efetch(pmids)
+
+
+def test_efetch_con_lista_vuota_non_chiama_la_rete(client):
+    assert client.efetch([]) == []
+
+
+@responses.activate
+def test_efetch_accetta_pmid_numerici(client):
+    responses.add(responses.POST, EFETCH_URL, body=_set_xml("11"), status=200)
+    assert [a.pmid for a in client.efetch([11])] == ["11"]
