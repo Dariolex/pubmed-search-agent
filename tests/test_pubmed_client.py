@@ -13,6 +13,8 @@ def env_completo(monkeypatch):
     monkeypatch.setenv("NCBI_API_KEY", CHIAVE_FINTA)
     monkeypatch.setenv("NCBI_TOOL_NAME", "pubmed-nl-search-agent")
     monkeypatch.setenv("NCBI_EMAIL", "test@example.org")
+    # Isola i test da qualsiasi .env reale su disco: patch load_dotenv a no-op
+    monkeypatch.setattr("pubmed_client.load_dotenv", lambda *a, **kw: None)
 
 
 def test_from_env_legge_le_tre_variabili(env_completo):
