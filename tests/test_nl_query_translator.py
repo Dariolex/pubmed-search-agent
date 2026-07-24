@@ -272,3 +272,34 @@ def test_cli_legge_da_file(tmp_path, capsys):
     out = capsys.readouterr()
     assert codice == 0
     assert out.out.strip() == '"melanoma"[tiab]'
+
+
+def test_cli_json_non_dict_esce_con_errore(capsys):
+    """JSON valido ma non-dict (numero, array, null, bool) è errore semantico."""
+    # Test con numero
+    codice = main(argv=[], stdin=io.StringIO("42"))
+    out = capsys.readouterr()
+    assert codice == 1
+    assert "oggetto" in out.err
+    assert out.out == ""
+
+    # Test con array
+    codice = main(argv=[], stdin=io.StringIO("[1, 2, 3]"))
+    out = capsys.readouterr()
+    assert codice == 1
+    assert "oggetto" in out.err
+    assert out.out == ""
+
+    # Test con null
+    codice = main(argv=[], stdin=io.StringIO("null"))
+    out = capsys.readouterr()
+    assert codice == 1
+    assert "oggetto" in out.err
+    assert out.out == ""
+
+    # Test con bool
+    codice = main(argv=[], stdin=io.StringIO("true"))
+    out = capsys.readouterr()
+    assert codice == 1
+    assert "oggetto" in out.err
+    assert out.out == ""

@@ -145,6 +145,10 @@ def main(argv=None, stdin=None) -> int:
     try:
         testo = open(args.file, encoding="utf-8").read() if args.file else sorgente.read()
         intermedio = json.loads(testo)
+        if not isinstance(intermedio, dict):
+            raise ValueError(
+                f"Il JSON deve essere un oggetto, non {type(intermedio).__name__}"
+            )
         query = serialize(intermedio)
     except (json.JSONDecodeError, ValueError, OSError) as exc:
         print(f"Errore: {exc}", file=sys.stderr)
