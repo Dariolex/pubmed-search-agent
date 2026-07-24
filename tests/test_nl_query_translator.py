@@ -93,3 +93,133 @@ def test_operatore_ignoto_solleva_value_error():
     }
     with pytest.raises(ValueError, match="AND o OR"):
         serialize(intermedio)
+
+
+def test_filtro_date_intervallo_completo():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"date": {"da": "2023", "a": "2026", "tipo": "dp"}},
+    }
+    assert serialize(intermedio) == '"melanoma"[tiab] AND ("2023"[dp] : "2026"[dp])'
+
+
+def test_filtro_date_solo_da():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"date": {"da": "2023", "tipo": "dp"}},
+    }
+    assert serialize(intermedio) == '"melanoma"[tiab] AND ("2023"[dp] : "3000"[dp])'
+
+
+def test_filtro_date_solo_a():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"date": {"a": "2026", "tipo": "edat"}},
+    }
+    assert serialize(intermedio) == '"melanoma"[tiab] AND ("1000"[edat] : "2026"[edat])'
+
+
+def test_tipo_studio_singolo():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"tipi_studio": ["randomized controlled trial"]},
+    }
+    assert serialize(intermedio) == (
+        '"melanoma"[tiab] AND "randomized controlled trial"[pt]'
+    )
+
+
+def test_tipi_studio_multipli_in_or():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"tipi_studio": ["randomized controlled trial", "meta-analysis"]},
+    }
+    assert serialize(intermedio) == (
+        '"melanoma"[tiab] AND '
+        '("randomized controlled trial"[pt] OR "meta-analysis"[pt])'
+    )
+
+
+def test_filtro_lingua():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"lingua": "english"},
+    }
+    assert serialize(intermedio) == '"melanoma"[tiab] AND "english"[la]'
+
+
+def test_esclusioni_in_not():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "esclusioni": [{"termine": "case reports", "campo": "pt"}],
+    }
+    assert serialize(intermedio) == '"melanoma"[tiab] NOT "case reports"[pt]'
+
+
+def test_esclusione_campo_predefinito_tiab():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "esclusioni": [{"termine": "pediatric"}],
+    }
+    assert serialize(intermedio) == '"melanoma"[tiab] NOT "pediatric"[tiab]'
+
+
+def test_ordine_canonico_stabile():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {
+            "date": {"da": "2023", "a": "2026", "tipo": "dp"},
+            "tipi_studio": ["review"],
+            "lingua": "english",
+        },
+        "esclusioni": [{"termine": "case reports", "campo": "pt"}],
+    }
+    atteso = (
+        '"melanoma"[tiab] AND ("2023"[dp] : "2026"[dp]) AND "review"[pt] '
+        'AND "english"[la] NOT "case reports"[pt]'
+    )
+    assert serialize(intermedio) == atteso
+    assert serialize(intermedio) == atteso  # stesso input -> stessa stringa
+
+
+def test_tipo_data_ignoto_solleva_value_error():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"date": {"da": "2023", "a": "2026", "tipo": "xyz"}},
+    }
+    with pytest.raises(ValueError, match="tipo data"):
+        serialize(intermedio)
+
+
+def test_esclusione_senza_termine_solleva_value_error():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "esclusioni": [{"campo": "pt"}],
+    }
+    with pytest.raises(ValueError, match="esclusione"):
+        serialize(intermedio)
+
+
+def test_query_di_riferimento_claude_md():
+    """La query di esempio del CLAUDE.md sezione 1, forma canonica."""
+    intermedio = {
+        "intento_originale": "immunoterapia nel melanoma metastatico, RCT, no case report",
+        "concetti": [
+            {"termine": "melanoma", "sinonimi": [], "mesh": "melanoma"},
+            {"termine": "immunotherapy", "sinonimi": [], "mesh": "immunotherapy"},
+            {"termine": "metastatic", "sinonimi": [], "mesh": None},
+        ],
+        "operatore_tra_concetti": "AND",
+        "esclusioni": [{"termine": "case reports", "campo": "pt"}],
+        "filtri": {
+            "date": {"da": "2023", "a": "2026", "tipo": "dp"},
+            "tipi_studio": ["randomized controlled trial"],
+        },
+    }
+    atteso = (
+        '("melanoma"[MeSH Terms] OR "melanoma"[tiab]) AND '
+        '("immunotherapy"[MeSH Terms] OR "immunotherapy"[tiab]) AND '
+        '"metastatic"[tiab] AND ("2023"[dp] : "2026"[dp]) AND '
+        '"randomized controlled trial"[pt] NOT "case reports"[pt]'
+    )
+    assert serialize(intermedio) == atteso

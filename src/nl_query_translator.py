@@ -12,6 +12,7 @@ guidato dalla skill /pubmed-search.
 from __future__ import annotations
 
 _OPERATORI_VALIDI = {"AND", "OR"}
+_TIPI_DATA_VALIDI = {"dp", "edat", "pdat"}
 
 
 def _pulisci(termine: str) -> str:
@@ -47,6 +48,44 @@ def _rendi_concetto(concetto: dict) -> str:
     return "(" + " OR ".join(alternative) + ")"
 
 
+def _rendi_filtri(filtri: dict) -> str:
+    """Filtri opzionali -> segmenti ` AND ...`. Stringa vuota se nessun filtro.
+
+    Ordine canonico: date, tipi di studio, lingua.
+    """
+    parti = []
+
+    date = filtri.get("date")
+    if date:
+        tipo = date.get("tipo", "dp")
+        if tipo not in _TIPI_DATA_VALIDI:
+            raise ValueError(
+                f"tipo data non valido: {tipo!r} (ammessi: dp, edat, pdat)"
+            )
+        da = date.get("da")
+        a = date.get("a")
+        if da or a:
+            # PubMed richiede entrambi gli estremi in un intervallo: si usano
+            # anni sentinella per gli intervalli aperti ("dal 2023 in poi").
+            estremo_da = da if da else "1000"
+            estremo_a = a if a else "3000"
+            parti.append(f'("{estremo_da}"[{tipo}] : "{estremo_a}"[{tipo}])')
+
+    tipi_studio = [t for t in (filtri.get("tipi_studio") or []) if _pulisci(t)]
+    if len(tipi_studio) == 1:
+        parti.append(_frase(tipi_studio[0], "pt"))
+    elif len(tipi_studio) > 1:
+        parti.append("(" + " OR ".join(_frase(t, "pt") for t in tipi_studio) + ")")
+
+    lingua = filtri.get("lingua")
+    if lingua and _pulisci(lingua):
+        parti.append(_frase(lingua, "la"))
+
+    if not parti:
+        return ""
+    return " AND " + " AND ".join(parti)
+
+
 def serialize(intermedio: dict) -> str:
     """JSON intermedio -> stringa `term=` PubMed.
 
@@ -67,4 +106,14 @@ def serialize(intermedio: dict) -> str:
     # esclusioni appesi in AND/NOT (Task 2) non alterino la precedenza booleana.
     if len(gruppi) > 1 and operatore == "OR":
         query = "(" + query + ")"
+
+    query += _rendi_filtri(intermedio.get("filtri") or {})
+
+    for esclusione in intermedio.get("esclusioni") or []:
+        termine = esclusione.get("termine")
+        if not termine or not _pulisci(termine):
+            raise ValueError("Ogni esclusione deve avere un 'termine' non vuoto")
+        campo = esclusione.get("campo") or "tiab"
+        query += f" NOT {_frase(termine, campo)}"
+
     return query
