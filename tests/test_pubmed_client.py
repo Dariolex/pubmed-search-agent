@@ -1,5 +1,7 @@
 """Test di configurazione, rate limiting e trasporto HTTP. Nessuna rete reale."""
 
+import os
+
 import pytest
 import responses
 
@@ -23,6 +25,38 @@ def test_from_env_legge_le_tre_variabili(env_completo):
     assert config.tool == "pubmed-nl-search-agent"
     assert config.email == "test@example.org"
     assert config.api_key == CHIAVE_FINTA
+
+
+def test_from_env_chiama_load_dotenv_per_popolare_variabili_mancanti(monkeypatch):
+    """Prova che from_env() invoca davvero load_dotenv().
+
+    Non usa la fixture env_completo (che patcha load_dotenv a no-op): qui
+    le tre variabili reali sono assenti dall'ambiente e vengono popolate
+    solo dalla load_dotenv finta, che simula la lettura di un file .env.
+    Se la chiamata a load_dotenv() venisse rimossa da from_env() (la
+    regressione già occorsa in 091b9aa), questo test fallirebbe perché le
+    variabili resterebbero assenti e from_env() solleverebbe PubMedConfigError.
+    """
+    monkeypatch.delenv("NCBI_API_KEY", raising=False)
+    monkeypatch.delenv("NCBI_EMAIL", raising=False)
+    monkeypatch.delenv("NCBI_TOOL_NAME", raising=False)
+
+    def dotenv_finto(*args, **kwargs):
+        os.environ.update(
+            {
+                "NCBI_API_KEY": "chiave-da-dotenv",
+                "NCBI_EMAIL": "dotenv@example.org",
+                "NCBI_TOOL_NAME": "tool-da-dotenv",
+            }
+        )
+
+    monkeypatch.setattr("pubmed_client.load_dotenv", dotenv_finto)
+
+    config = PubMedConfig.from_env()
+
+    assert config.api_key == "chiave-da-dotenv"
+    assert config.email == "dotenv@example.org"
+    assert config.tool == "tool-da-dotenv"
 
 
 def test_variabile_mancante_solleva_config_error(monkeypatch, env_completo):
