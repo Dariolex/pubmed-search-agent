@@ -1,6 +1,7 @@
 """Test di parsing puro: nessuna rete, nessun mock, solo stringhe XML."""
 
 import pytest
+from pathlib import Path
 
 from pubmed_errors import PubMedParseError
 from pubmed_models import Article, SearchResult, find_api_error, parse_efetch_xml, parse_esearch_xml
@@ -334,3 +335,65 @@ def test_abstract_con_solo_etichette_vuote_e_none(casi_limite):
 def test_ordine_dei_record_preservato():
     articles = parse_efetch_xml(EFETCH_CASI_LIMITE)
     assert [a.pmid for a in articles] == ["30000001", "30000002", "30000003"]
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _fixture(nome: str) -> str:
+    percorso = FIXTURES / nome
+    if not percorso.exists():
+        pytest.skip(f"{nome} non registrata: eseguire python tests/record_fixtures.py")
+    return percorso.read_text(encoding="utf-8")
+
+
+def test_fixture_esearch_reale():
+    result = parse_esearch_xml(_fixture("esearch_basic.xml"))
+    assert result.total_count > 0
+    assert len(result.pmids) > 0
+    assert all(p.isdigit() for p in result.pmids)
+    assert result.translated_query
+    assert result.webenv
+
+
+def test_fixture_esearch_zero_risultati():
+    result = parse_esearch_xml(_fixture("esearch_zero_results.xml"))
+    assert result.total_count == 0
+    assert result.pmids == []
+
+
+def test_fixture_esearch_error_rilevata():
+    assert find_api_error(_fixture("esearch_error.xml")) is not None
+
+
+def test_fixture_efetch_batch_reale():
+    articoli = parse_efetch_xml(_fixture("efetch_batch.xml"))
+    assert len(articoli) >= 1
+    for art in articoli:
+        assert art.pmid.isdigit()
+        assert art.title
+        assert art.journal
+        assert art.pub_date[:4].isdigit()
+
+
+def test_fixture_abstract_strutturato_reale():
+    articoli = parse_efetch_xml(_fixture("efetch_batch.xml"))
+    strutturati = [a for a in articoli if a.abstract and ": " in a.abstract]
+    assert strutturati, "nessun abstract strutturato nella fixture"
+
+
+def test_fixture_senza_abstract_reale():
+    articoli = parse_efetch_xml(_fixture("efetch_no_abstract.xml"))
+    assert len(articoli) == 1
+    assert articoli[0].abstract is None
+    assert articoli[0].title
+
+
+def test_fixture_autore_collettivo_reale():
+    articoli = parse_efetch_xml(_fixture("efetch_collective_author.xml"))
+    assert articoli[0].authors, "nessun autore estratto"
+
+
+def test_nessuna_fixture_contiene_api_key():
+    for percorso in FIXTURES.glob("*.xml"):
+        assert "api_key=" not in percorso.read_text(encoding="utf-8")
