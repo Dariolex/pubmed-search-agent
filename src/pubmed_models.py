@@ -196,7 +196,7 @@ def parse_efetch_xml(xml: str) -> list[Article]:
     for pubmed_article in root.findall(".//PubmedArticle"):
         citazione = pubmed_article.find("MedlineCitation")
         if citazione is None:
-            continue
+            raise PubMedParseError("<PubmedArticle> privo di <MedlineCitation>")
         pmid = _text(citazione.find("PMID"))
         if not pmid:
             raise PubMedParseError("<MedlineCitation> priva di <PMID>")

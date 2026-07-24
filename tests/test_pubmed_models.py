@@ -224,6 +224,12 @@ def test_citazione_senza_pmid_solleva_parse_error():
         parse_efetch_xml(xml)
 
 
+def test_articolo_senza_medline_citation_solleva_parse_error():
+    xml = "<PubmedArticleSet><PubmedArticle></PubmedArticle></PubmedArticleSet>"
+    with pytest.raises(PubMedParseError, match="MedlineCitation"):
+        parse_efetch_xml(xml)
+
+
 EFETCH_CASI_LIMITE = """<?xml version="1.0" encoding="UTF-8" ?>
 <PubmedArticleSet>
 <PubmedArticle>
