@@ -1,7 +1,7 @@
 """Test di nl_query_translator: serializzazione pura JSON intermedio -> query PubMed."""
 
 import io
-import json
+import sys
 
 import pytest
 
@@ -305,29 +305,98 @@ def test_cli_json_non_dict_esce_con_errore(capsys):
     assert out.out == ""
 
 
-def test_cli_con_caratteri_non_ascii_non_crasha(capsys):
-    """Verifica che main() non crasha su caratteri Unicode non-ASCII nella query generata.
+class _BufferFinto:
+    """Doppio di test per lo stream binario `sys.stdout.buffer`: accumula i byte
+    scritti senza applicare alcuna codifica permissiva (a differenza di
+    `capsys`, che sostituisce stdout con uno stream di cattura di fatto UTF-8)."""
 
-    Simula il caso di un termine con accenti (es. "café") o altri caratteri Unicode
-    che causerebbero UnicodeEncodeError su Windows con stdout encoding cp1252.
-    Con backslashreplace, l'output deve rimanere sempre valid e main() deve tornare 0.
+    def __init__(self):
+        self.chunks: list[bytes] = []
+
+    def write(self, dati: bytes) -> int:
+        self.chunks.append(dati)
+        return len(dati)
+
+
+class _StdoutFinto:
+    """Simula uno stdout con `encoding` realmente restrittivo (cp1252, come su
+    certe console Windows), esponendo `.buffer.write(bytes)` come fa il vero
+    `sys.stdout.buffer`."""
+
+    def __init__(self, encoding: str):
+        self.encoding = encoding
+        self.buffer = _BufferFinto()
+
+
+def test_cli_con_carattere_non_cp1252_usa_backslashreplace(monkeypatch):
+    """Verifica il meccanismo specifico del fix: con stdout.encoding=cp1252 e un
+    carattere non rappresentabile in cp1252 (U+2009 THIN SPACE, a differenza di
+    "é" che *è* rappresentabile in cp1252 e quindi non discriminerebbe nulla),
+    main() non deve crashare (return 0) e i byte scritti, decodificati con
+    cp1252, devono contenere la sequenza di escape ASCII prodotta da
+    errors="backslashreplace" (`\\u2009`), non il carattere Unicode grezzo
+    (che cp1252 non può rappresentare).
+
+    Non usiamo `capsys`: sostituisce sys.stdout con uno stream di cattura
+    permissivo (di fatto UTF-8), che non farebbe mai scattare
+    UnicodeEncodeError indipendentemente dal fix. Sostituiamo invece
+    direttamente `sys.stdout` con un doppio che dichiara `encoding="cp1252"`
+    e cattura i byte grezzi scritti su `.buffer`.
+
+    Sul codice pre-fix (`print(query)` anziché
+    `sys.stdout.buffer.write(query.encode(..., errors="backslashreplace"))`),
+    questo test fallirebbe: `print` scriverebbe tramite `sys.stdout.write`
+    (str), che con un TextIOWrapper reale su cp1252 solleverebbe
+    UnicodeEncodeError per U+2009; con questo doppio minimale (che non
+    implementa `.write()` testuale) fallirebbe comunque, perché il fix
+    richiede esplicitamente l'uso di `.buffer.write`.
     """
-    # JSON con un termine che contiene accenti (café)
-    json_con_accenti = '{"concetti": [{"termine": "café", "sinonimi": [], "mesh": null}]}'
-    codice = main(argv=[], stdin=io.StringIO(json_con_accenti))
-    out = capsys.readouterr()
-    assert codice == 0, f"main() failed with code {codice}, stderr: {out.err}"
-    # Verifica che qualcosa sia stato scritto su stdout
-    assert out.out.strip() != "", "Output should not be empty"
+    termine_con_thin_space = "a b"
+    # Conferma che il carattere scelto non è rappresentabile in cp1252
+    # (a differenza di "é", usato nella versione tautologica di questo test).
+    with pytest.raises(UnicodeEncodeError):
+        termine_con_thin_space.encode("cp1252")
+
+    json_con_thin_space = (
+        '{"concetti": [{"termine": "a\\u2009b", "sinonimi": [], "mesh": null}]}'
+    )
+    stdout_finto = _StdoutFinto("cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout_finto)
+
+    codice = main(argv=[], stdin=io.StringIO(json_con_thin_space))
+
+    assert codice == 0
+    scritto = b"".join(stdout_finto.buffer.chunks)
+    # I byte devono essere decodificabili con cp1252 senza sollevare eccezioni:
+    # se il fix non applicasse backslashreplace, questo passo fallirebbe con
+    # UnicodeEncodeError già in fase di encode dentro main().
+    decodificato = scritto.decode("cp1252")
+    assert " " not in decodificato, (
+        "Il carattere Unicode grezzo non deve comparire: cp1252 non può "
+        "rappresentarlo, quindi deve essere stato sostituito dall'escape."
+    )
+    assert "\\u2009" in decodificato, (
+        "Ci si aspetta la sequenza di escape ASCII prodotta da "
+        "errors='backslashreplace'."
+    )
 
 
-def test_cli_con_caratteri_non_ascii_e_link(capsys):
-    """Verifica che --link funziona anche con caratteri non-ASCII nella query."""
-    json_con_accenti = '{"concetti": [{"termine": "café", "sinonimi": [], "mesh": null}]}'
-    codice = main(argv=["--link"], stdin=io.StringIO(json_con_accenti))
-    out = capsys.readouterr()
-    assert codice == 0, f"main() failed with code {codice}, stderr: {out.err}"
-    righe = out.out.strip().splitlines()
-    # Deve avere almeno 2 righe: query e URL
-    assert len(righe) >= 2, "Output should contain both query and URL with --link"
-    assert righe[1].startswith("https://pubmed.ncbi.nlm.nih.gov/?term="), "Second line should be URL"
+def test_cli_con_carattere_non_cp1252_e_link_usa_backslashreplace(monkeypatch):
+    """Come sopra, ma con --link: anche l'URL generato passa per lo stesso
+    percorso di scrittura e deve restare scrivibile su uno stdout cp1252."""
+    json_con_thin_space = (
+        '{"concetti": [{"termine": "a\\u2009b", "sinonimi": [], "mesh": null}]}'
+    )
+    stdout_finto = _StdoutFinto("cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout_finto)
+
+    codice = main(argv=["--link"], stdin=io.StringIO(json_con_thin_space))
+
+    assert codice == 0
+    scritto = b"".join(stdout_finto.buffer.chunks)
+    decodificato = scritto.decode("cp1252")
+    righe = decodificato.strip().splitlines()
+    assert len(righe) >= 2
+    assert " " not in righe[0]
+    assert "\\u2009" in righe[0]
+    assert righe[1].startswith("https://pubmed.ncbi.nlm.nih.gov/?term=")
