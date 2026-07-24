@@ -17,14 +17,18 @@ naturale. Il parsing XML vive in pubmed_models.py.
 from __future__ import annotations
 
 import os
+import random
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import Sequence
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
+import requests
 
-from pubmed_errors import PubMedConfigError
+from pubmed_errors import PubMedAPIError, PubMedConfigError, PubMedHTTPError
+from pubmed_models import Article, SearchResult, find_api_error, parse_efetch_xml, parse_esearch_xml
 
 PUBMED_WEB_BASE = "https://pubmed.ncbi.nlm.nih.gov/?term="
 
@@ -110,3 +114,92 @@ class RateLimiter:
 def pubmed_web_url(term: str) -> str:
     """Link alla stessa ricerca sull'interfaccia web, da mostrare all'utente."""
     return PUBMED_WEB_BASE + quote_plus(term)
+
+
+STATUS_RITENTABILI = frozenset({429, 500, 502, 503, 504})
+
+
+class PubMedClient:
+    """Client sincrono per ESearch ed EFetch.
+
+    Le dipendenze (sessione, rate limiter, sleep) sono iniettabili perché i test
+    devono poter simulare attese e guasti senza rete né tempo reale.
+    """
+
+    BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
+
+    def __init__(
+        self,
+        config: PubMedConfig | None = None,
+        *,
+        session: "requests.Session | None" = None,
+        rate_limiter: RateLimiter | None = None,
+        max_attempts: int = 3,
+        sleep=time.sleep,
+        timeout: tuple[float, float] = (5.0, 30.0),
+    ) -> None:
+        self._config = config or PubMedConfig.from_env()
+        self._session = session or requests.Session()
+        self._limiter = rate_limiter or RateLimiter()
+        self._max_attempts = max_attempts
+        self._sleep = sleep
+        self._timeout = timeout
+
+    def _attesa(self, tentativo: int, retry_after: str | None) -> float:
+        if retry_after:
+            try:
+                return float(retry_after)
+            except ValueError:
+                pass
+        base = 2.0 ** (tentativo - 1)
+        return base + random.uniform(0.0, 0.1 * base)
+
+    def _request(self, endpoint: str, params: dict, *, method: str = "GET") -> str:
+        """Esegue una chiamata E-utilities e restituisce il corpo XML.
+
+        Nessun messaggio di errore contiene l'URL: per le GET includerebbe api_key.
+        """
+        url = self.BASE_URL + endpoint
+        payload = {
+            **params,
+            "tool": self._config.tool,
+            "email": self._config.email,
+            "api_key": self._config.api_key,
+        }
+        ultimo_status: int | None = None
+
+        for tentativo in range(1, self._max_attempts + 1):
+            self._limiter.acquire()
+            try:
+                if method == "POST":
+                    resp = self._session.post(url, data=payload, timeout=self._timeout)
+                else:
+                    resp = self._session.get(url, params=payload, timeout=self._timeout)
+            except requests.RequestException as exc:
+                # str(exc) conterrebbe l'URL completo con api_key: si usa solo il tipo.
+                if tentativo == self._max_attempts:
+                    raise PubMedHTTPError(
+                        f"{endpoint}: errore di rete dopo {tentativo} tentativi "
+                        f"({type(exc).__name__})"
+                    ) from None
+                self._sleep(self._attesa(tentativo, None))
+                continue
+
+            if resp.status_code in STATUS_RITENTABILI:
+                ultimo_status = resp.status_code
+                if tentativo == self._max_attempts:
+                    break
+                self._sleep(self._attesa(tentativo, resp.headers.get("Retry-After")))
+                continue
+
+            if resp.status_code >= 400:
+                raise PubMedHTTPError(f"{endpoint}: HTTP {resp.status_code}")
+
+            errore = find_api_error(resp.text)
+            if errore:
+                raise PubMedAPIError(f"{endpoint}: {errore}")
+            return resp.text
+
+        raise PubMedHTTPError(
+            f"{endpoint}: HTTP {ultimo_status} dopo {self._max_attempts} tentativi"
+        )
