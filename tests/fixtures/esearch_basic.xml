@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE eSearchResult PUBLIC "-//NLM//DTD esearch 20060628//EN" "https://eutils.ncbi.nlm.nih.gov/eutils/dtd/20060628/esearch.dtd">
+<eSearchResult><Count>24268</Count><RetMax>5</RetMax><RetStart>0</RetStart><QueryKey>1</QueryKey><WebEnv>MCID_6a6308b4d4f423e5ae0e4c2f</WebEnv><IdList>
+<Id>42489984</Id>
+<Id>42488406</Id>
+<Id>42486717</Id>
+<Id>42486609</Id>
+<Id>42486514</Id>
+</IdList><TranslationSet><Translation>     <From>melanoma</From>     <To>"melanoma"[MeSH Terms] OR "melanoma"[All Fields] OR "melanomas"[All Fields] OR "melanoma's"[All Fields]</To>    </Translation><Translation>     <From>immunotherapy</From>     <To>"immunotherapy"[MeSH Terms] OR "immunotherapy"[All Fields] OR "immunotherapies"[All Fields] OR "immunotherapy's"[All Fields]</To>    </Translation></TranslationSet><QueryTranslation>("melanoma"[MeSH Terms] OR "melanoma"[All Fields] OR "melanomas"[All Fields] OR "melanoma s"[All Fields]) AND ("immunotherapy"[MeSH Terms] OR "immunotherapy"[All Fields] OR "immunotherapies"[All Fields] OR "immunotherapy s"[All Fields])</QueryTranslation></eSearchResult>
