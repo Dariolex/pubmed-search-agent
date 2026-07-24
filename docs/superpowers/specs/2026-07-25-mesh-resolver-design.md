@@ -38,15 +38,22 @@ modulo).
 | D3 | Nessun match affidabile → `descriptor: null`, fallback su `[tiab]` | Comportamento identico a oggi quando Claude non è sicuro. Nessuna interruzione del flusso, nessuna disambiguazione complessa. |
 | D4 | Restituisce anche gli **entry term** ufficiali (sinonimi MeSH) | Arricchisce il campo `sinonimi` del concetto con informazione autoritativa, non solo il tag `[MeSH Terms]`. |
 | D5 | Nuovo metodo **`PubMedClient.resolve_mesh()`**, non un client separato | Riusa `_request`/`RateLimiter`/retry già testati in `pubmed_client.py`, invece di duplicare la logica di trasporto. |
-| D6 | Match affidabile solo se il **primo risultato di ESearch è ragionevolmente vicino** al termine cercato (case-insensitive, spazi normalizzati) | Evita liste ambigue senza bisogno di scoring sofisticato: o il termine dell'utente è già vicino al vocabolario MeSH, oppure si rimanda al giudizio di Claude com'è oggi. |
+| D6 | ESearch con **`term={termine}[MeSH Terms:noexp]`** (match esatto sull'intestazione MeSH), non una ricerca libera | **Verificato dal vivo contro l'API reale in fase di brainstorming.** Questo campo restituisce `Count=1` con l'UID corretto quando il termine corrisponde esattamente a un'intestazione MeSH ufficiale (case-insensitive), e `Count=0` (con `<ErrorList><PhraseNotFound>`) quando non c'è alcuna corrispondenza. Elimina la necessità di euristiche di somiglianza: NCBI stesso fa da arbitro del match esatto, senza falsi positivi possibili. Una ricerca libera su `term={termine}` (senza il tag di campo) restituisce invece risultati per rilevanza testuale generica e può anteporre voci correlate ma non pertinenti (verificato: "melanoma" senza tag restituiva come primo risultato un antigene di superficie cellulare, non la malattia). |
 | D7 | Un errore di rete/NCBI durante la risoluzione **non interrompe la traduzione** | Il resolver è un arricchimento opzionale. La skill tratta un errore come "nessun match" e prosegue con `[tiab]`. |
 
-### Rischio noto, da chiarire in fase di piano
+### Formato della risposta, verificato dal vivo
 
-Il formato esatto della risposta ESummary per `db=mesh` (nomi dei campi XML per
-descriptor ed entry term) non è ancora stato verificato contro l'API reale. Va
-confermato registrando fixture autentiche durante l'implementazione (stesso approccio
-usato per `pubmed_client`), non è un blocco per questo design.
+Il rischio originariamente segnalato (formato ESummary di `db=mesh` non verificato) è
+stato chiuso durante il brainstorming con chiamate reali all'API:
+
+- **ESearch** (`term={termine}[MeSH Terms:noexp]&db=mesh`): stesso schema XML di
+  `esearch` su `db=pubmed` (`<Count>`, `<IdList><Id>`), ma il conteggio è sempre 0 o 1
+  con questo tag di campo — non serve gestire liste di candidati multipli.
+- **ESummary** (`db=mesh&id={uid}`): un `<DocSum>` con vari `<Item Name="DS_*">`. Il
+  campo rilevante è `<Item Name="DS_MeshTerms" Type="List">`, una lista di
+  `<Item Name="string">`: **il primo elemento è il nome ufficiale del descriptor**, gli
+  elementi successivi sono gli entry term (sinonimi). Esempio reale per "melanoma"
+  (UID `68008545`): `["Melanoma", "Melanomas", "Malignant Melanoma", "Malignant Melanomas", "Melanoma, Malignant", "Melanomas, Malignant"]` → descriptor `"Melanoma"`, entry term il resto della lista.
 
 ---
 
@@ -57,15 +64,15 @@ usato per `pubmed_client`), non è un blocco per questo design.
 ```python
 def resolve_mesh(self, termine: str) -> "MeshMatch | None":
     """Risolve un termine libero verso il descriptor MeSH ufficiale, se esiste
-    un match affidabile.
+    un match esatto.
 
     Flusso a due chiamate (stesso pattern di esearch+efetch):
-    1. esearch.fcgi?db=mesh&term={termine} -> UID candidati
-    2. esummary.fcgi?db=mesh&id={uid} -> descriptor + entry term
+    1. esearch.fcgi?db=mesh&term={termine}[MeSH Terms:noexp] -> 0 o 1 UID
+       (match esatto sull'intestazione, verificato dal vivo — D6)
+    2. esummary.fcgi?db=mesh&id={uid} -> DS_MeshTerms: [descriptor, *entry_term]
 
-    Restituisce None se non c'è nessun risultato, o se il primo risultato non è
-    ragionevolmente vicino al termine cercato (D6) — mai un match "a caso" dalla
-    lista.
+    Restituisce None se Count=0 (nessuna intestazione MeSH corrisponde esattamente
+    al termine).
     """
 ```
 
