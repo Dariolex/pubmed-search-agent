@@ -1,20 +1,70 @@
 """
 nl_query_translator.py
 
-Traduzione di query in linguaggio naturale nella sintassi di ricerca avanzata di PubMed.
+Serializzazione deterministica di un JSON intermedio (prodotto da Claude nella fase 1)
+nella sintassi di ricerca avanzata di PubMed.
 
-Responsabilità (approccio a due fasi, vedi CLAUDE.md sezione 5):
-1. Estrazione strutturata — analizza la query NL (via Claude) e produce un JSON intermedio
-   con concetti chiave, sinonimi/varianti, filtri (data, tipo di studio, lingua, popolazione),
-   esclusioni esplicite e operatori logici impliciti tra i concetti.
-2. Serializzazione in sintassi PubMed — dal JSON intermedio genera la stringa `term=` finale,
-   con tag di campo corretti ([tiab], [MeSH Terms], [pt], [dp], [au], [ta], [la]) e parentesi
-   per la precedenza booleana (AND/OR/NOT maiuscoli).
-
-Le due fasi sono separate per permettere di testare la serializzazione offline con JSON fissi
-come fixture, e per loggare/validare il JSON intermedio quando la query risultante non produce
-i risultati attesi.
-
-Vincolo architetturale: questo modulo non deve mai effettuare chiamate HTTP dirette a NCBI —
-quella responsabilità appartiene esclusivamente a pubmed_client.py.
+Questo modulo NON fa chiamate a Claude né a NCBI: è una funzione pura, testabile
+offline con JSON fissi. La comprensione del linguaggio naturale vive in Claude,
+guidato dalla skill /pubmed-search.
 """
+
+from __future__ import annotations
+
+_OPERATORI_VALIDI = {"AND", "OR"}
+
+
+def _pulisci(termine: str) -> str:
+    """Rimuove le virgolette doppie interne (PubMed non supporta l'escaping) e
+    gli spazi ai bordi."""
+    return termine.replace('"', "").strip()
+
+
+def _frase(termine: str, tag: str) -> str:
+    """Un termine come frase esatta con tag di campo, es. '\"melanoma\"[tiab]'."""
+    return f'"{_pulisci(termine)}"[{tag}]'
+
+
+def _rendi_concetto(concetto: dict) -> str:
+    """Un concetto -> gruppo con MeSH (opzionale), tiab e sinonimi in OR.
+
+    Un solo elemento (nessun mesh, nessun sinonimo) non viene racchiuso tra
+    parentesi, per non appesantire la query.
+    """
+    termine = concetto.get("termine")
+    if not termine or not _pulisci(termine):
+        raise ValueError("Ogni concetto deve avere un 'termine' non vuoto")
+    alternative = []
+    mesh = concetto.get("mesh")
+    if mesh and _pulisci(mesh):
+        alternative.append(_frase(mesh, "MeSH Terms"))
+    alternative.append(_frase(termine, "tiab"))
+    for sinonimo in concetto.get("sinonimi") or []:
+        if _pulisci(sinonimo):
+            alternative.append(_frase(sinonimo, "tiab"))
+    if len(alternative) == 1:
+        return alternative[0]
+    return "(" + " OR ".join(alternative) + ")"
+
+
+def serialize(intermedio: dict) -> str:
+    """JSON intermedio -> stringa `term=` PubMed.
+
+    Solleva ValueError se il JSON è semanticamente invalido (nessun concetto,
+    concetto senza termine, operatore diverso da AND/OR).
+    """
+    concetti = intermedio.get("concetti") or []
+    if not concetti:
+        raise ValueError("Il JSON intermedio deve contenere almeno un concetto")
+    operatore = intermedio.get("operatore_tra_concetti", "AND")
+    if operatore not in _OPERATORI_VALIDI:
+        raise ValueError(
+            f"operatore_tra_concetti deve essere AND o OR, non {operatore!r}"
+        )
+    gruppi = [_rendi_concetto(c) for c in concetti]
+    query = f" {operatore} ".join(gruppi)
+    # Con operatore OR e più concetti, racchiudo il gruppo così che i filtri/le
+    # esclusioni appesi in AND/NOT (Task 2) non alterino la precedenza booleana.
+    if len(gruppi) > 1 and operatore == "OR":
+        query = "(" + query + ")"
+    return query
