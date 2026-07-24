@@ -35,25 +35,40 @@ Output: elenco ordinato per pertinenza, con motivazione della rilevanza
 
 ```
 pubmed-search-agent/
-├── CLAUDE.md                  # questo file — contesto di progetto per Claude Code
-├── .env                       # NCBI_API_KEY, NCBI_TOOL_NAME, NCBI_EMAIL (mai committare)
+├── CLAUDE.md
+├── .env
 ├── .env.example
+├── pytest.ini
 ├── requirements.txt
+├── docs/superpowers/
+│   ├── specs/                 # design approvati in brainstorming
+│   └── plans/                 # piani di implementazione
 ├── src/
-│   ├── nl_query_translator.py # NL → sintassi PubMed (usa Claude come motore di traduzione)
-│   ├── pubmed_client.py       # wrapper E-utilities (ESearch, EFetch, ESummary, rate limiting)
-│   ├── relevance_filter.py    # filtro di pertinenza semantica sui risultati (via Claude)
-│   ├── mesh_resolver.py       # mappatura termini liberi → MeSH controllati
-│   └── mcp_server.py          # espone il tutto come tool MCP `search_pubmed_papers`
+│   ├── pubmed_errors.py       # gerarchia di eccezioni condivisa
+│   ├── pubmed_models.py       # dataclass + parsing XML puro (nessuna rete)
+│   ├── pubmed_client.py       # wrapper E-utilities, rate limiting, retry
+│   ├── nl_query_translator.py # NL → sintassi PubMed
+│   ├── relevance_filter.py    # filtro di pertinenza semantica
+│   ├── mesh_resolver.py       # termini liberi → MeSH controllati
+│   └── mcp_server.py          # tool MCP `search_pubmed_papers`
 ├── tests/
-│   ├── test_nl_query_translator.py
+│   ├── test_pubmed_errors.py
+│   ├── test_pubmed_models.py
 │   ├── test_pubmed_client.py
-│   └── fixtures/               # risposte XML/JSON NCBI salvate per i test offline
+│   ├── test_pubmed_live.py
+│   ├── test_nl_query_translator.py
+│   ├── record_fixtures.py     # registra risposte NCBI reali
+│   └── fixtures/              # XML NCBI salvati, senza api_key
 └── examples/
-    └── sample_queries.md       # query NL di esempio con output atteso, per regressione manuale
+    └── sample_queries.md
 ```
 
 **Principio guida:** ogni modulo deve essere testabile in isolamento. `pubmed_client.py` non deve mai contenere logica di interpretazione NL; `nl_query_translator.py` non deve mai fare chiamate HTTP dirette a NCBI.
+
+Il parsing XML vive in `pubmed_models.py`, che non ha alcuna dipendenza da rete ed è
+testabile passandogli stringhe. `pubmed_errors.py` esiste in un modulo proprio perché
+sia il parser sia il client devono sollevare eccezioni della stessa gerarchia, e
+definirle nel client creerebbe un import circolare.
 
 ## 4. API PubMed (NCBI E-utilities) — riferimento tecnico
 
@@ -69,11 +84,21 @@ Endpoint principali usati dal progetto:
 | Endpoint | Funzione | Note |
 |---|---|---|
 | `esearch.fcgi?db=pubmed&term=...` | Esegue la query, restituisce PMID | Usare `usehistory=y` per query con molti risultati; supporta `retmax`, `datetype`, `mindate`/`maxdate` |
-| `esummary.fcgi?db=pubmed&id=...` | Metadati sintetici (titolo, autori, journal, data) | Utile per un primo filtro leggero prima di scaricare l'abstract completo |
+| `esummary.fcgi?db=pubmed&id=...` | Metadati sintetici (titolo, autori, journal, data) | Fase successiva, non nel MVP: `efetch` restituisce già titolo, autori, journal e data insieme all'abstract |
 | `efetch.fcgi?db=pubmed&id=...&rettype=abstract&retmode=xml` | Abstract completo | Necessario per il filtro di rilevanza semantica |
 | `elink.fcgi` | Articoli correlati / citazioni | Fase successiva, non nel MVP |
 
 **Rate limiting:** 3 richieste/secondo senza `api_key`, **10 richieste/secondo** con `api_key` valida. `pubmed_client.py` deve implementare un limitatore esplicito (es. token bucket) e gestire i retry su HTTP 429, non affidarsi solo alla libreria HTTP.
+
+**Attenzione — `<ErrorList>` non è un errore fatale.** ESearch restituisce
+`<ErrorList><PhraseNotFound>…</PhraseNotFound></ErrorList>` quando un termine non trova
+corrispondenze, ma la ricerca è comunque riuscita: quei figli finiscono in
+`SearchResult.warnings` e dicono *quale* termine non ha matchato. Solo l'elemento
+`<ERROR>` indica un fallimento vero e produce un `PubMedAPIError`.
+
+**Attenzione — un errore può arrivare con HTTP 200.** Una query malformata non produce un
+400 ma un `<ERROR>` dentro XML valido con status 200. Controllare solo `status_code`
+darebbe una lista vuota indistinguibile da «nessun match».
 
 **Sintassi di ricerca PubMed rilevante da generare in traduzione:**
 - Tag di campo: `[tiab]` (title/abstract), `[MeSH Terms]`, `[au]` (autore), `[ta]` (rivista), `[dp]` (data pubblicazione), `[pt]` (tipo di pubblicazione, es. `"randomized controlled trial"[pt]`), `[la]` (lingua)
@@ -118,7 +143,9 @@ Nessuna chiave va mai committata o loggata in chiaro; `pubmed_client.py` deve le
 
 ## 8. Roadmap di sviluppo (MVP → oltre)
 
-1. `pubmed_client.py` — wrapper minimo ESearch + EFetch con rate limiting, testato contro l'API reale con query statiche
+1. ~~`pubmed_errors.py` + `pubmed_models.py` + `pubmed_client.py` — wrapper ESearch + EFetch
+   con rate limiting e parsing tipizzato, testato offline su fixture reali e in modalità live~~
+   **(completato)**
 2. `nl_query_translator.py` — traduzione NL → sintassi PubMed, senza MeSH resolver (solo `[tiab]`)
 3. Integrazione end-to-end: query NL → query PubMed → PMID → abstract, senza ancora il filtro di rilevanza
 4. `relevance_filter.py` — aggiunta del filtro semantico sui risultati
@@ -130,6 +157,12 @@ Nessuna chiave va mai committata o loggata in chiaro; `pubmed_client.py` deve le
 
 - I test su `pubmed_client.py` devono poter girare sia in modalità "live" (vera chiamata a NCBI, marcata ed eseguita separatamente per non consumare rate limit nei test automatici) sia in modalità offline usando le fixture XML salvate in `tests/fixtures/`.
 - `examples/sample_queries.md` raccoglie query NL reali con la query PubMed attesa e un giudizio manuale sui primi risultati: serve da suite di regressione qualitativa quando si modifica il prompt di traduzione.
+
+I test live sono marcati `@pytest.mark.live` ed esclusi di default da `pytest.ini`
+(`addopts = -m "not live"`): `pytest` gira interamente offline, `pytest -m live` esegue le
+chiamate reali. Le fixture non si scrivono a mano — `python tests/record_fixtures.py`
+registra risposte NCBI autentiche in `tests/fixtures/`, rimuovendo la `api_key` prima di
+scrivere su disco.
 
 ## 10. Convenzioni di lavoro con Claude Code
 
