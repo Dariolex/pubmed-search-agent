@@ -47,6 +47,7 @@ pubmed-search-agent/
 │   ├── pubmed_errors.py       # gerarchia di eccezioni condivisa
 │   ├── pubmed_models.py       # dataclass + parsing XML puro (nessuna rete)
 │   ├── pubmed_client.py       # wrapper E-utilities, rate limiting, retry
+│   ├── run_search.py          # entry-point CLI: query -> esearch/efetch -> JSON
 │   ├── nl_query_translator.py # NL → sintassi PubMed
 │   ├── relevance_filter.py    # filtro di pertinenza semantica
 │   ├── mesh_resolver.py       # termini liberi → MeSH controllati
@@ -57,6 +58,7 @@ pubmed-search-agent/
 │   ├── test_pubmed_client.py
 │   ├── test_pubmed_live.py
 │   ├── test_nl_query_translator.py
+│   ├── test_run_search.py
 │   ├── record_fixtures.py     # registra risposte NCBI reali
 │   └── fixtures/              # XML NCBI salvati, senza api_key
 └── examples/
@@ -69,6 +71,11 @@ Il parsing XML vive in `pubmed_models.py`, che non ha alcuna dipendenza da rete 
 testabile passandogli stringhe. `pubmed_errors.py` esiste in un modulo proprio perché
 sia il parser sia il client devono sollevare eccezioni della stessa gerarchia, e
 definirle nel client creerebbe un import circolare.
+
+La skill `/pubmed-search` (`.claude/skills/pubmed-search/SKILL.md`) è l'interfaccia utente:
+guida Claude nella fase 1 (estrazione NL → JSON intermedio) e nel filtro di rilevanza
+inline, invocando `nl_query_translator` (fase 2, serializzazione deterministica) e
+`run_search` (esecuzione). Nessuna API key oltre a quella NCBI.
 
 ## 4. API PubMed (NCBI E-utilities) — riferimento tecnico
 
@@ -146,9 +153,13 @@ Nessuna chiave va mai committata o loggata in chiaro; `pubmed_client.py` deve le
 1. ~~`pubmed_errors.py` + `pubmed_models.py` + `pubmed_client.py` — wrapper ESearch + EFetch
    con rate limiting e parsing tipizzato, testato offline su fixture reali e in modalità live~~
    **(completato)**
-2. `nl_query_translator.py` — traduzione NL → sintassi PubMed, senza MeSH resolver (solo `[tiab]`)
-3. Integrazione end-to-end: query NL → query PubMed → PMID → abstract, senza ancora il filtro di rilevanza
-4. `relevance_filter.py` — aggiunta del filtro semantico sui risultati
+2. ~~`nl_query_translator.py` — traduzione NL → sintassi PubMed (solo `[tiab]` + MeSH a
+   giudizio di Claude), come modulo deterministico testabile~~ **(completato)**
+3. ~~Integrazione end-to-end: query NL → query PubMed → PMID → abstract, tramite
+   `run_search.py` e la skill `/pubmed-search`~~ **(completato)**
+4. ~~Filtro di rilevanza: implementato inline nella skill `/pubmed-search` (Claude legge
+   gli abstract e ordina per pertinenza); `relevance_filter.py` come modulo dedicato resta
+   un'evoluzione futura~~ **(completato, inline)**
 5. `mesh_resolver.py` — miglioramento della traduzione con termini MeSH controllati
 6. `mcp_server.py` — esposizione come tool MCP `search_pubmed_papers`, utilizzabile da Claude Desktop/Code
 7. (Successivo) supporto a `elink.fcgi` per articoli correlati e catene di citazioni
