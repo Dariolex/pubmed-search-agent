@@ -303,3 +303,31 @@ def test_cli_json_non_dict_esce_con_errore(capsys):
     assert codice == 1
     assert "oggetto" in out.err
     assert out.out == ""
+
+
+def test_cli_con_caratteri_non_ascii_non_crasha(capsys):
+    """Verifica che main() non crasha su caratteri Unicode non-ASCII nella query generata.
+
+    Simula il caso di un termine con accenti (es. "café") o altri caratteri Unicode
+    che causerebbero UnicodeEncodeError su Windows con stdout encoding cp1252.
+    Con backslashreplace, l'output deve rimanere sempre valid e main() deve tornare 0.
+    """
+    # JSON con un termine che contiene accenti (café)
+    json_con_accenti = '{"concetti": [{"termine": "café", "sinonimi": [], "mesh": null}]}'
+    codice = main(argv=[], stdin=io.StringIO(json_con_accenti))
+    out = capsys.readouterr()
+    assert codice == 0, f"main() failed with code {codice}, stderr: {out.err}"
+    # Verifica che qualcosa sia stato scritto su stdout
+    assert out.out.strip() != "", "Output should not be empty"
+
+
+def test_cli_con_caratteri_non_ascii_e_link(capsys):
+    """Verifica che --link funziona anche con caratteri non-ASCII nella query."""
+    json_con_accenti = '{"concetti": [{"termine": "café", "sinonimi": [], "mesh": null}]}'
+    codice = main(argv=["--link"], stdin=io.StringIO(json_con_accenti))
+    out = capsys.readouterr()
+    assert codice == 0, f"main() failed with code {codice}, stderr: {out.err}"
+    righe = out.out.strip().splitlines()
+    # Deve avere almeno 2 righe: query e URL
+    assert len(righe) >= 2, "Output should contain both query and URL with --link"
+    assert righe[1].startswith("https://pubmed.ncbi.nlm.nih.gov/?term="), "Second line should be URL"

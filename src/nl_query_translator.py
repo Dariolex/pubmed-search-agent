@@ -154,9 +154,12 @@ def main(argv=None, stdin=None) -> int:
         print(f"Errore: {exc}", file=sys.stderr)
         return 1
 
-    print(query)
+    # Scrivi query con encoding robusto: se stdout non supporta UTF-8, usa backslashreplace
+    # per evitare UnicodeEncodeError su Windows con encoding cp1252 e caratteri non-ASCII.
+    sys.stdout.buffer.write((query + "\n").encode(sys.stdout.encoding or "utf-8", errors="backslashreplace"))
     if args.link:
-        print(pubmed_web_url(query))
+        url = pubmed_web_url(query)
+        sys.stdout.buffer.write((url + "\n").encode(sys.stdout.encoding or "utf-8", errors="backslashreplace"))
     return 0
 
 
