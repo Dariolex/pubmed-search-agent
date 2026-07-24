@@ -7,6 +7,7 @@ import responses
 
 from pubmed_client import PubMedClient, PubMedConfig, RateLimiter, pubmed_web_url
 from pubmed_errors import PubMedAPIError, PubMedConfigError, PubMedHTTPError
+from pubmed_models import MeshMatch
 
 CHIAVE_FINTA = "chiave-segretissima-0123456789"
 
@@ -385,3 +386,65 @@ def test_efetch_con_lista_vuota_non_chiama_la_rete(client):
 def test_efetch_accetta_pmid_numerici(client):
     responses.add(responses.POST, EFETCH_URL, body=_set_xml("11"), status=200)
     assert [a.pmid for a in client.efetch([11])] == ["11"]
+
+
+MESH_SEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+MESH_SUMMARY_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+
+MESH_ESEARCH_MATCH = """<?xml version="1.0" ?>
+<eSearchResult><Count>1</Count><RetMax>1</RetMax><RetStart>0</RetStart>
+<IdList><Id>68008545</Id></IdList></eSearchResult>
+"""
+
+MESH_ESEARCH_NO_MATCH = """<?xml version="1.0" ?>
+<eSearchResult><Count>0</Count><RetMax>0</RetMax><RetStart>0</RetStart>
+<IdList/><ErrorList><PhraseNotFound>xyz[MeSH Terms:noexp]</PhraseNotFound></ErrorList>
+</eSearchResult>
+"""
+
+MESH_ESUMMARY_MELANOMA = """<?xml version="1.0" ?>
+<eSummaryResult><DocSum><Id>68008545</Id>
+<Item Name="DS_MeshTerms" Type="List">
+	<Item Name="string" Type="String">Melanoma</Item>
+	<Item Name="string" Type="String">Melanomas</Item>
+</Item>
+</DocSum></eSummaryResult>
+"""
+
+
+@responses.activate
+def test_resolve_mesh_trova_match(client):
+    responses.add(responses.GET, MESH_SEARCH_URL, body=MESH_ESEARCH_MATCH, status=200)
+    responses.add(responses.GET, MESH_SUMMARY_URL, body=MESH_ESUMMARY_MELANOMA, status=200)
+    match = client.resolve_mesh("melanoma")
+    assert match is not None
+    assert match.descriptor == "Melanoma"
+    assert match.entry_terms == ["Melanomas"]
+    assert match.mesh_ui == "68008545"
+    assert match.termine_originale == "melanoma"
+
+
+@responses.activate
+def test_resolve_mesh_invia_il_tag_di_campo_esatto(client):
+    responses.add(responses.GET, MESH_SEARCH_URL, body=MESH_ESEARCH_MATCH, status=200)
+    responses.add(responses.GET, MESH_SUMMARY_URL, body=MESH_ESUMMARY_MELANOMA, status=200)
+    client.resolve_mesh("melanoma")
+    inviata = responses.calls[0].request
+    assert "db=mesh" in inviata.url
+    assert "MeSH+Terms%3Anoexp" in inviata.url or "MeSH%20Terms%3Anoexp" in inviata.url
+
+
+@responses.activate
+def test_resolve_mesh_nessun_match_restituisce_none_senza_seconda_chiamata(client):
+    responses.add(responses.GET, MESH_SEARCH_URL, body=MESH_ESEARCH_NO_MATCH, status=200)
+    match = client.resolve_mesh("xyznonesiste")
+    assert match is None
+    assert len(responses.calls) == 1  # nessuna chiamata a esummary se non c'è UID
+
+
+@responses.activate
+def test_resolve_mesh_propaga_errore_di_rete(client):
+    for _ in range(3):
+        responses.add(responses.GET, MESH_SEARCH_URL, status=500)
+    with pytest.raises(PubMedHTTPError):
+        client.resolve_mesh("melanoma")
