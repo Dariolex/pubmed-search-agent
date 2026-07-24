@@ -50,11 +50,8 @@ class PubMedConfig:
         """Legge .env e le variabili d'ambiente, fallendo subito se manca qualcosa.
 
         Meglio un errore esplicito all'avvio che un HTTP 400 opaco da NCBI.
-
-        Nota: load_dotenv() va chiamato PRIMA di from_env() per popolare le variabili
-        d'ambiente da .env, ad esempio in main() o nella setup dell'applicazione.
-        Questo consente ai test di isolarse usando monkeypatch senza interferenza da .env.
         """
+        load_dotenv()
         valori = {
             campo: (os.environ.get(nome) or "").strip()
             for campo, nome in _VARIABILI.items()
