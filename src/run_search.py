@@ -52,7 +52,7 @@ def main(argv=None) -> int:
         print(f"Errore: {exc}", file=sys.stderr)
         return 1
 
-    json.dump(risultato, sys.stdout, ensure_ascii=False, indent=2)
+    json.dump(risultato, sys.stdout, ensure_ascii=True, indent=2)
     sys.stdout.write("\n")
     return 0
 
