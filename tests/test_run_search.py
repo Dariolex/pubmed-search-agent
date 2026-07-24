@@ -202,3 +202,83 @@ def test_main_handles_unicode_in_abstract(client, monkeypatch, capsys):
     abstract = primo_articolo["abstract"]
     assert "café" in abstract, "Accented characters should be decoded from \\uXXXX escapes"
     assert "résumé" in abstract, "Accented characters should be decoded from \\uXXXX escapes"
+
+
+class _BufferFinto:
+    """Doppio di test per lo stream binario `sys.stderr.buffer`: accumula i
+    byte scritti senza applicare alcuna codifica permissiva (a differenza di
+    `capsys`, che sostituisce stderr con uno stream di cattura di fatto
+    UTF-8, che non farebbe mai scattare UnicodeEncodeError)."""
+
+    def __init__(self):
+        self.chunks: list[bytes] = []
+
+    def write(self, dati: bytes) -> int:
+        self.chunks.append(dati)
+        return len(dati)
+
+
+class _StderrFinto:
+    """Simula uno stderr con `encoding` realmente restrittivo (cp1252, come
+    su certe console Windows), esponendo `.buffer.write(bytes)` come fa il
+    vero `sys.stderr.buffer`."""
+
+    def __init__(self, encoding: str):
+        self.encoding = encoding
+        self.buffer = _BufferFinto()
+
+
+@responses.activate
+def test_main_errore_ncbi_con_carattere_non_cp1252_su_stderr(client, monkeypatch):
+    """Verifica l'hardening del ramo d'errore di main() (stampa su stderr).
+
+    PubMedAPIError incorpora nel messaggio il testo grezzo del tag <ERROR>
+    restituito da NCBI (costruito in pubmed_client.py come
+    `f"{endpoint}: {errore}"`), che può contenere qualunque carattere non
+    cp1252 arrivato dal corpo di risposta NCBI. Si usa la lettera greca theta
+    (U+03B8, "printable" e quindi non alterata da alcun repr()) per simulare
+    un tale carattere nel corpo <ERROR> mockato.
+
+    Sul codice pre-fix (`print(f"Errore: {exc}", file=sys.stderr)`), questo
+    test fallirebbe: con questo doppio minimale (che espone solo
+    `.buffer.write(bytes)`, non un `.write()` testuale) `print` solleverebbe
+    AttributeError, perché tenterebbe di scrivere una str su un oggetto privo
+    di quel metodo -- il test discrimina quindi esattamente il fix richiesto
+    (uso di `.buffer.write` con encoding robusto), non solo il sintomo.
+    """
+    monkeypatch.setattr("run_search.PubMedConfig.from_env", lambda: client._config)
+    monkeypatch.setattr("run_search.PubMedClient", lambda config: client)
+
+    messaggio_con_theta = "Search Backend failed: parametro non valido \u03b8 nel termine"
+    assert messaggio_con_theta.isprintable()
+    with pytest.raises(UnicodeEncodeError):
+        messaggio_con_theta.encode("cp1252")
+
+    esearch_errore = f"""<?xml version="1.0" ?>
+<eSearchResult>
+<ERROR>{messaggio_con_theta}</ERROR>
+</eSearchResult>"""
+
+    responses.add(
+        responses.GET,
+        ESEARCH_URL,
+        body=esearch_errore,
+        status=200,
+    )
+
+    stderr_finto = _StderrFinto("cp1252")
+    monkeypatch.setattr("run_search.sys.stderr", stderr_finto)
+
+    codice = main(argv=["--term", "melanoma AND (", "--retmax", "5"])
+
+    assert codice == 1
+    scritto = b"".join(stderr_finto.buffer.chunks)
+    decodificato = scritto.decode("cp1252")
+    assert messaggio_con_theta not in decodificato, (
+        "Il carattere Unicode grezzo non deve comparire: cp1252 non può "
+        "rappresentarlo, quindi deve essere stato sostituito dall'escape."
+    )
+    assert "\\u03b8" in decodificato, (
+        "Ci si aspetta la sequenza di escape ASCII prodotta da "
+        "errors='backslashreplace'."
+    )

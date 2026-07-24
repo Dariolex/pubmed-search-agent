@@ -1,6 +1,7 @@
 """Test di nl_query_translator: serializzazione pura JSON intermedio -> query PubMed."""
 
 import io
+import json
 import sys
 
 import pytest
@@ -400,3 +401,75 @@ def test_cli_con_carattere_non_cp1252_e_link_usa_backslashreplace(monkeypatch):
     assert " " not in righe[0]
     assert "\\u2009" in righe[0]
     assert righe[1].startswith("https://pubmed.ncbi.nlm.nih.gov/?term=")
+
+
+class _StderrFinto:
+    """Come `_StdoutFinto`, ma per `sys.stderr`: stesso doppio minimale con
+    `.encoding` restrittivo e `.buffer.write(bytes)`, usato per verificare
+    l'hardening del ramo d'errore (stampa su stderr) invece di quello di
+    stampa normale su stdout."""
+
+    def __init__(self, encoding: str):
+        self.encoding = encoding
+        self.buffer = _BufferFinto()
+
+
+def test_cli_errore_con_carattere_non_cp1252_su_stderr_usa_backslashreplace(monkeypatch):
+    """Verifica l'hardening del ramo d'errore di main() (stampa su stderr).
+
+    `serialize()` solleva ValueError con `repr()` del valore non valido
+    incorporato nel messaggio (es. `operatore_tra_concetti deve essere AND o
+    OR, non {operatore!r}`). Se quel valore contiene un carattere non
+    rappresentabile in cp1252, il ramo `except` deve scrivere il messaggio con
+    lo stesso schema robusto usato per stdout (`.buffer.write` con
+    `errors="backslashreplace"`), non con `print(..., file=sys.stderr)`.
+
+    Si usa la lettera greca theta (U+03B8) invece di U+2009 THIN SPACE: THIN
+    SPACE non e' "printable" per Python (`str.isprintable()` e' False per i
+    separatori Unicode diversi dallo spazio ASCII), quindi `repr()` la
+    escaperebbe gia' lui stesso in `\\u2009` *prima* che il messaggio arrivi a
+    stdout/stderr, rendendo il test tautologico (il messaggio sarebbe gia'
+    puro ASCII e non solleverebbe mai UnicodeEncodeError). Theta e' invece
+    "printable": `repr()` la lascia come carattere Unicode grezzo dentro le
+    virgolette, esattamente come richiesto dallo scenario del reviewer ("un
+    operatore... contenente una lettera greca").
+
+    Sul codice pre-fix (`print(f"Errore: {exc}", file=sys.stderr)`), questo
+    test fallirebbe: con questo doppio minimale (che espone solo
+    `.buffer.write(bytes)`, non un `.write()` testuale) `print` solleverebbe
+    AttributeError, perche' tenterebbe di scrivere una str su un oggetto privo
+    di quel metodo -- il test discrimina quindi esattamente il fix richiesto
+    (uso di `.buffer.write` con encoding robusto), non solo il sintomo.
+    """
+    operatore_con_theta = "AND" + "\u03b8" + "OR"
+    assert operatore_con_theta.isprintable()
+    with pytest.raises(UnicodeEncodeError):
+        operatore_con_theta.encode("cp1252")
+    # repr() lo lascia grezzo (non lo trasforma in \u03b8 ASCII): conferma che
+    # il carattere problematico arriva intatto nel messaggio d'errore, non
+    # gia' pre-escapato da repr() come accadrebbe con THIN SPACE.
+    with pytest.raises(UnicodeEncodeError):
+        repr(operatore_con_theta).encode("cp1252")
+
+    json_operatore_invalido = json.dumps(
+        {
+            "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+            "operatore_tra_concetti": operatore_con_theta,
+        }
+    )
+    stderr_finto = _StderrFinto("cp1252")
+    monkeypatch.setattr(sys, "stderr", stderr_finto)
+
+    codice = main(argv=[], stdin=io.StringIO(json_operatore_invalido))
+
+    assert codice == 1
+    scritto = b"".join(stderr_finto.buffer.chunks)
+    decodificato = scritto.decode("cp1252")
+    assert operatore_con_theta not in decodificato, (
+        "Il carattere Unicode grezzo non deve comparire: cp1252 non puo' "
+        "rappresentarlo, quindi deve essere stato sostituito dall'escape."
+    )
+    assert "\\u03b8" in decodificato, (
+        "Ci si aspetta la sequenza di escape ASCII prodotta da "
+        "errors='backslashreplace'."
+    )

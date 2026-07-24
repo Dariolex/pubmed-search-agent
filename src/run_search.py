@@ -49,7 +49,12 @@ def main(argv=None) -> int:
         client = PubMedClient(PubMedConfig.from_env())
         risultato = esegui(args.term, args.retmax, client)
     except PubMedError as exc:
-        print(f"Errore: {exc}", file=sys.stderr)
+        # I messaggi di PubMedError possono incorporare il testo grezzo di errore
+        # restituito da NCBI: usiamo un encoding robusto per evitare UnicodeEncodeError
+        # su console Windows con encoding restrittivo (es. cp1252).
+        sys.stderr.buffer.write(
+            f"Errore: {exc}\n".encode(sys.stderr.encoding or "utf-8", errors="backslashreplace")
+        )
         return 1
 
     json.dump(risultato, sys.stdout, ensure_ascii=True, indent=2)
