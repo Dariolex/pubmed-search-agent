@@ -4,7 +4,15 @@ import pytest
 from pathlib import Path
 
 from pubmed_errors import PubMedParseError
-from pubmed_models import Article, SearchResult, find_api_error, parse_efetch_xml, parse_esearch_xml
+from pubmed_models import (
+    Article,
+    SearchResult,
+    MeshMatch,
+    find_api_error,
+    parse_efetch_xml,
+    parse_esearch_xml,
+    parse_mesh_esummary_xml,
+)
 
 ESEARCH_BASE = """<?xml version="1.0" encoding="UTF-8" ?>
 <eSearchResult>
@@ -403,3 +411,85 @@ def test_fixture_autore_collettivo_reale():
 def test_nessuna_fixture_contiene_api_key():
     for percorso in FIXTURES.glob("*.xml"):
         assert "api_key=" not in percorso.read_text(encoding="utf-8")
+
+
+MESH_ESUMMARY_MATCH = """<?xml version="1.0" ?>
+<eSummaryResult>
+<DocSum>
+	<Id>68008545</Id>
+	<Item Name="DS_ScopeNote" Type="String">A malignant neoplasm derived from cells capable of forming melanin.</Item>
+	<Item Name="DS_MeshTerms" Type="List">
+		<Item Name="string" Type="String">Melanoma</Item>
+		<Item Name="string" Type="String">Melanomas</Item>
+		<Item Name="string" Type="String">Malignant Melanoma</Item>
+		<Item Name="string" Type="String">Malignant Melanomas</Item>
+		<Item Name="string" Type="String">Melanoma, Malignant</Item>
+		<Item Name="string" Type="String">Melanomas, Malignant</Item>
+	</Item>
+</DocSum>
+</eSummaryResult>
+"""
+
+MESH_ESUMMARY_UN_SOLO_TERMINE = """<?xml version="1.0" ?>
+<eSummaryResult>
+<DocSum>
+	<Id>68007167</Id>
+	<Item Name="DS_MeshTerms" Type="List">
+		<Item Name="string" Type="String">Immunotherapy</Item>
+	</Item>
+</DocSum>
+</eSummaryResult>
+"""
+
+MESH_ESUMMARY_SENZA_DOCSUM = """<?xml version="1.0" ?>
+<eSummaryResult>
+</eSummaryResult>
+"""
+
+MESH_ESUMMARY_MESHTERMS_VUOTO = """<?xml version="1.0" ?>
+<eSummaryResult>
+<DocSum>
+	<Id>99999999</Id>
+	<Item Name="DS_MeshTerms" Type="List">
+	</Item>
+</DocSum>
+</eSummaryResult>
+"""
+
+
+def test_parse_mesh_esummary_descriptor_e_entry_terms():
+    match = parse_mesh_esummary_xml(MESH_ESUMMARY_MATCH, "melanoma")
+    assert isinstance(match, MeshMatch)
+    assert match.termine_originale == "melanoma"
+    assert match.descriptor == "Melanoma"
+    assert match.entry_terms == [
+        "Melanomas",
+        "Malignant Melanoma",
+        "Malignant Melanomas",
+        "Melanoma, Malignant",
+        "Melanomas, Malignant",
+    ]
+    assert match.mesh_ui == "68008545"
+
+
+def test_parse_mesh_esummary_un_solo_termine_entry_terms_vuoto():
+    match = parse_mesh_esummary_xml(MESH_ESUMMARY_UN_SOLO_TERMINE, "immunotherapy")
+    assert match.descriptor == "Immunotherapy"
+    assert match.entry_terms == []
+    assert match.mesh_ui == "68007167"
+
+
+def test_parse_mesh_esummary_senza_docsum_solleva_parse_error():
+    with pytest.raises(PubMedParseError, match="DocSum"):
+        parse_mesh_esummary_xml(MESH_ESUMMARY_SENZA_DOCSUM, "x")
+
+
+def test_parse_mesh_esummary_meshterms_vuoto_solleva_parse_error():
+    with pytest.raises(PubMedParseError, match="DS_MeshTerms"):
+        parse_mesh_esummary_xml(MESH_ESUMMARY_MESHTERMS_VUOTO, "x")
+
+
+def test_mesh_match_e_immutabile():
+    match = parse_mesh_esummary_xml(MESH_ESUMMARY_MATCH, "melanoma")
+    with pytest.raises(Exception):
+        match.descriptor = "altro"

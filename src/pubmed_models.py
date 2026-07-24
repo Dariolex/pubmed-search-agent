@@ -225,3 +225,49 @@ def parse_efetch_xml(xml: str) -> list[Article]:
             )
         )
     return articoli
+
+
+@dataclass(frozen=True)
+class MeshMatch:
+    """Esito di una risoluzione verso il vocabolario MeSH controllato di NCBI.
+
+    `descriptor` è il nome ufficiale dell'intestazione MeSH (il primo elemento di
+    <DS_MeshTerms>); `entry_terms` sono i sinonimi ufficiali (gli elementi
+    successivi) — non gli stessi sinonimi che Claude estrae nella fase 1, ma quelli
+    riconosciuti dal vocabolario controllato.
+    """
+
+    termine_originale: str
+    descriptor: str
+    entry_terms: list[str]
+    mesh_ui: str
+
+
+def parse_mesh_esummary_xml(xml: str, termine_originale: str) -> MeshMatch:
+    """Risposta ESummary di db=mesh -> MeshMatch.
+
+    `termine_originale` non compare nella risposta NCBI (è il termine cercato dal
+    chiamante): va passato esplicitamente, non estratto dall'XML.
+    """
+    root = _root(xml)
+    docsum = root.find("DocSum")
+    if docsum is None:
+        raise PubMedParseError("Risposta ESummary priva di <DocSum>")
+    mesh_ui = _text(docsum.find("Id"))
+    mesh_terms_node = next(
+        (item for item in docsum.findall("Item") if item.get("Name") == "DS_MeshTerms"),
+        None,
+    )
+    termini = [
+        _text(el)
+        for el in (mesh_terms_node.findall("Item") if mesh_terms_node is not None else [])
+    ]
+    termini = [t for t in termini if t]
+    if not termini:
+        raise PubMedParseError(f"DS_MeshTerms vuoto o assente per UID {mesh_ui!r}")
+    return MeshMatch(
+        termine_originale=termine_originale,
+        descriptor=termini[0],
+        entry_terms=termini[1:],
+        mesh_ui=mesh_ui,
+    )
