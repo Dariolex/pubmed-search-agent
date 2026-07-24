@@ -13,6 +13,27 @@ FIXTURES = Path(__file__).parent / "fixtures"
 ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 
+# efetch_batch.xml (fixture genuina, registrata da NCBI) contiene solo i PMID
+# 33301246 e 42140479. esearch_basic.xml è una registrazione genuina ma di
+# un'altra query, con PMID diversi: la sua intersezione con efetch_batch.xml
+# (fatta da PubMedClient.efetch) sarebbe vuota. Per il test che verifica il
+# round-trip completo con articoli non vuoti, usiamo un corpo ESearch minimo
+# e sintetico (solo Count/IdList, nessun contenuto d'articolo inventato)
+# costruito qui inline sui PMID reali di efetch_batch.xml, invece di
+# fabbricare un file di fixture con titoli/abstract/rivista finti.
+ESEARCH_BODY_PMID_MATCH_EFETCH_BATCH = """<?xml version="1.0" ?>
+<eSearchResult>
+<Count>2</Count>
+<RetMax>2</RetMax>
+<RetStart>0</RetStart>
+<IdList>
+<Id>33301246</Id>
+<Id>42140479</Id>
+</IdList>
+<TranslationSet></TranslationSet>
+<QueryTranslation></QueryTranslation>
+</eSearchResult>"""
+
 
 class OrologioFinto:
     def __init__(self):
@@ -37,20 +58,16 @@ def client():
 
 @responses.activate
 def test_esegui_restituisce_dict_con_articoli(client):
-    # efetch_matching_basic.xml contiene i PMID reali di esearch_basic.xml
-    # (efetch_batch.xml esiste ma è stato registrato per una query diversa: i
-    # suoi PMID non coincidono con quelli di esearch_basic.xml, quindi
-    # l'intersezione fatta da PubMedClient.efetch tornerebbe vuota).
     responses.add(
         responses.GET,
         ESEARCH_URL,
-        body=(FIXTURES / "esearch_basic.xml").read_text(encoding="utf-8"),
+        body=ESEARCH_BODY_PMID_MATCH_EFETCH_BATCH,
         status=200,
     )
     responses.add(
         responses.POST,
         EFETCH_URL,
-        body=(FIXTURES / "efetch_matching_basic.xml").read_text(encoding="utf-8"),
+        body=(FIXTURES / "efetch_batch.xml").read_text(encoding="utf-8"),
         status=200,
     )
     risultato = esegui("melanoma", retmax=5, client=client)
@@ -88,7 +105,7 @@ def test_main_stampa_json_su_stdout(client, monkeypatch, capsys):
     responses.add(
         responses.POST,
         EFETCH_URL,
-        body=(FIXTURES / "efetch_matching_basic.xml").read_text(encoding="utf-8"),
+        body=(FIXTURES / "efetch_batch.xml").read_text(encoding="utf-8"),
         status=200,
     )
     codice = main(argv=["--term", "melanoma", "--retmax", "5"])
