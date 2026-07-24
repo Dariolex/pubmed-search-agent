@@ -11,6 +11,12 @@ guidato dalla skill /pubmed-search.
 
 from __future__ import annotations
 
+import argparse
+import json
+import sys
+
+from pubmed_client import pubmed_web_url
+
 _OPERATORI_VALIDI = {"AND", "OR"}
 _TIPI_DATA_VALIDI = {"dp", "edat", "pdat"}
 
@@ -117,3 +123,38 @@ def serialize(intermedio: dict) -> str:
         query += f" NOT {_frase(termine, campo)}"
 
     return query
+
+
+def main(argv=None, stdin=None) -> int:
+    """CLI: legge il JSON intermedio da stdin (o --file) e stampa la query PubMed.
+
+    Con --link stampa anche l'URL della stessa ricerca sull'interfaccia web.
+    Gli errori (JSON malformato o semanticamente invalido) vanno su stderr con
+    codice di uscita 1, così il chiamante sa di dover correggere il JSON.
+    """
+    parser = argparse.ArgumentParser(
+        description="Traduce un JSON intermedio nella sintassi di ricerca PubMed."
+    )
+    parser.add_argument("--file", help="Legge il JSON da questo file invece che da stdin")
+    parser.add_argument(
+        "--link", action="store_true", help="Stampa anche l'URL pubmed.ncbi.nlm.nih.gov"
+    )
+    args = parser.parse_args(argv)
+
+    sorgente = stdin if stdin is not None else sys.stdin
+    try:
+        testo = open(args.file, encoding="utf-8").read() if args.file else sorgente.read()
+        intermedio = json.loads(testo)
+        query = serialize(intermedio)
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        print(f"Errore: {exc}", file=sys.stderr)
+        return 1
+
+    print(query)
+    if args.link:
+        print(pubmed_web_url(query))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

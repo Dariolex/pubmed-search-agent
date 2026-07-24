@@ -1,8 +1,11 @@
 """Test di nl_query_translator: serializzazione pura JSON intermedio -> query PubMed."""
 
+import io
+import json
+
 import pytest
 
-from nl_query_translator import serialize
+from nl_query_translator import serialize, main
 
 
 def test_concetto_singolo_solo_tiab():
@@ -223,3 +226,49 @@ def test_query_di_riferimento_claude_md():
         '"randomized controlled trial"[pt] NOT "case reports"[pt]'
     )
     assert serialize(intermedio) == atteso
+
+
+# ============ CLI tests (Task 3)
+
+_JSON_MELANOMA = '{"concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": null}]}'
+
+
+def test_cli_legge_da_stdin_e_stampa_query(capsys):
+    codice = main(argv=[], stdin=io.StringIO(_JSON_MELANOMA))
+    out = capsys.readouterr()
+    assert codice == 0
+    assert out.out.strip() == '"melanoma"[tiab]'
+    assert out.err == ""
+
+
+def test_cli_opzione_link_aggiunge_url(capsys):
+    codice = main(argv=["--link"], stdin=io.StringIO(_JSON_MELANOMA))
+    out = capsys.readouterr()
+    righe = out.out.strip().splitlines()
+    assert codice == 0
+    assert righe[0] == '"melanoma"[tiab]'
+    assert righe[1].startswith("https://pubmed.ncbi.nlm.nih.gov/?term=")
+
+
+def test_cli_json_malformato_esce_con_errore(capsys):
+    codice = main(argv=[], stdin=io.StringIO("{non-json"))
+    out = capsys.readouterr()
+    assert codice == 1
+    assert out.err.strip() != ""
+    assert out.out == ""
+
+
+def test_cli_json_semanticamente_invalido_esce_con_errore(capsys):
+    codice = main(argv=[], stdin=io.StringIO('{"concetti": []}'))
+    out = capsys.readouterr()
+    assert codice == 1
+    assert "concetto" in out.err
+
+
+def test_cli_legge_da_file(tmp_path, capsys):
+    percorso = tmp_path / "query.json"
+    percorso.write_text(_JSON_MELANOMA, encoding="utf-8")
+    codice = main(argv=["--file", str(percorso)])
+    out = capsys.readouterr()
+    assert codice == 0
+    assert out.out.strip() == '"melanoma"[tiab]'
