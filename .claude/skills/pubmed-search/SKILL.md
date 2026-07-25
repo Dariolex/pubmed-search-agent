@@ -36,8 +36,9 @@ Analizza la richiesta NL e costruisci questo JSON (schema esteso con provenienza
 
 Linee guida per l'estrazione:
 - **Concetti**: i nuclei clinici/scientifici della richiesta. Aggiungi `sinonimi`
-  utili (varianti terminologiche, non traduzioni). Popola `mesh` solo quando il
-  termine MeSH controllato è ovvio (es. `melanoma`, `immunotherapy`); altrimenti `null`.
+  utili (varianti terminologiche, non traduzioni). Per il campo `mesh`, se hai un
+  candidato plausibile (es. `melanoma`), non limitarti al tuo giudizio: verificalo
+  con il resolver (vedi sotto) prima di popolarlo nel JSON finale.
 - **operatore_tra_concetti**: `AND` di norma (l'utente vuole tutti i concetti insieme).
   Usa `OR` solo se la richiesta è esplicitamente alternativa ("melanoma o carcinoma").
 - **Esclusioni**: frasi come "escludendo X", "senza X", "non case report" → `NOT`.
@@ -49,6 +50,26 @@ Linee guida per l'estrazione:
 - **Lingua**: solo se la richiesta la specifica ("in inglese" → `english`).
 
 `provenienza` non entra nella query: serve a te e all'utente per il debug.
+
+### 1bis. Verifica i termini MeSH candidati (opzionale, per concetto)
+
+Per ogni concetto con un candidato MeSH plausibile, verifica il termine ufficiale
+prima di scrivere il JSON finale:
+
+```bash
+PYTHONPATH=src python -m mesh_resolver --termine "melanoma"
+```
+
+Restituisce JSON con `descriptor` (il nome ufficiale, o `null` se nessun match
+esatto) ed `entry_terms` (sinonimi ufficiali del vocabolario MeSH). Se `descriptor`
+non è `null`, usalo come valore di `mesh` nel JSON del concetto e valuta se
+aggiungere gli `entry_terms` più pertinenti a `sinonimi`. Se `descriptor` è `null`
+o il comando esce con errore, lascia `mesh: null` per quel concetto — è lo stesso
+comportamento di oggi, nessuna interruzione del flusso.
+
+Questo passo è opzionale ma consigliato quando un concetto ha un candidato MeSH
+plausibile: sostituisce il giudizio estemporaneo con una verifica autoritativa
+contro il vocabolario controllato di NCBI.
 
 ### 2. Genera la query PubMed (fase deterministica)
 

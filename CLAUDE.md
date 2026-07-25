@@ -160,7 +160,9 @@ Nessuna chiave va mai committata o loggata in chiaro; `pubmed_client.py` deve le
 4. ~~Filtro di rilevanza: implementato inline nella skill `/pubmed-search` (Claude legge
    gli abstract e ordina per pertinenza); `relevance_filter.py` come modulo dedicato resta
    un'evoluzione futura~~ **(completato, inline)**
-5. `mesh_resolver.py` — miglioramento della traduzione con termini MeSH controllati
+5. ~~`mesh_resolver.py` — risoluzione autoritativa verso il vocabolario MeSH
+   controllato di NCBI (`PubMedClient.resolve_mesh`, `db=mesh`), invocata dalla
+   skill `/pubmed-search` prima della serializzazione~~ **(completato)**
 6. `mcp_server.py` — esposizione come tool MCP `search_pubmed_papers`, utilizzabile da Claude Desktop/Code
 7. (Successivo) supporto a `elink.fcgi` per articoli correlati e catene di citazioni
 
