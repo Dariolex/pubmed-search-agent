@@ -413,6 +413,14 @@ def test_nessuna_fixture_contiene_api_key():
         assert "api_key=" not in percorso.read_text(encoding="utf-8")
 
 
+def test_fixture_mesh_esummary_reale():
+    match = parse_mesh_esummary_xml(_fixture("mesh_esummary_match.xml"), "melanoma")
+    assert match.descriptor
+    assert match.mesh_ui.isdigit()
+    # L'entry term "Melanomas" è tra i sinonimi ufficiali attesi per questo descriptor.
+    assert any("Melanoma" in t for t in match.entry_terms) or match.descriptor == "Melanoma"
+
+
 MESH_ESUMMARY_MATCH = """<?xml version="1.0" ?>
 <eSummaryResult>
 <DocSum>

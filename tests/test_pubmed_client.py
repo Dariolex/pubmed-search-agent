@@ -1,15 +1,18 @@
 """Test di configurazione, rate limiting e trasporto HTTP. Nessuna rete reale."""
 
 import os
+from pathlib import Path
 
 import pytest
 import responses
 
 from pubmed_client import PubMedClient, PubMedConfig, RateLimiter, pubmed_web_url
 from pubmed_errors import PubMedAPIError, PubMedConfigError, PubMedHTTPError
-from pubmed_models import MeshMatch
+from pubmed_models import MeshMatch, parse_esearch_xml
 
 CHIAVE_FINTA = "chiave-segretissima-0123456789"
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
@@ -448,3 +451,17 @@ def test_resolve_mesh_propaga_errore_di_rete(client):
         responses.add(responses.GET, MESH_SEARCH_URL, status=500)
     with pytest.raises(PubMedHTTPError):
         client.resolve_mesh("melanoma")
+
+
+def test_fixture_mesh_esearch_match_reale_ha_count_uno():
+    xml = (FIXTURES / "mesh_esearch_match.xml").read_text(encoding="utf-8")
+    ricerca = parse_esearch_xml(xml)
+    assert ricerca.total_count == 1
+    assert len(ricerca.pmids) == 1
+
+
+def test_fixture_mesh_esearch_no_match_reale_ha_count_zero():
+    xml = (FIXTURES / "mesh_esearch_no_match.xml").read_text(encoding="utf-8")
+    ricerca = parse_esearch_xml(xml)
+    assert ricerca.total_count == 0
+    assert ricerca.pmids == []

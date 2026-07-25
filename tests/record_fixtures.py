@@ -116,6 +116,30 @@ def main() -> int:
     tutto_ok &= _verifica("efetch_collective", "<CollectiveName>" in xml, "contiene CollectiveName")
     _scrivi("efetch_collective_author.xml", xml, chiave)
 
+    print("mesh_esearch_match.xml — match esatto su db=mesh (melanoma)")
+    xml = client._request(
+        "esearch.fcgi",
+        {"db": "mesh", "term": "melanoma[MeSH Terms:noexp]", "retmode": "xml"},
+    )
+    tutto_ok &= _verifica("mesh_esearch_match", "<Count>1</Count>" in xml, "Count vale 1")
+    _scrivi("mesh_esearch_match.xml", xml, chiave)
+
+    print("mesh_esearch_no_match.xml — nessun match su db=mesh")
+    xml = client._request(
+        "esearch.fcgi",
+        {"db": "mesh", "term": "zzzznonesistequestotermine[MeSH Terms:noexp]", "retmode": "xml"},
+    )
+    tutto_ok &= _verifica("mesh_esearch_no_match", "<Count>0</Count>" in xml, "Count vale 0")
+    _scrivi("mesh_esearch_no_match.xml", xml, chiave)
+
+    print("mesh_esummary_match.xml — descriptor + entry term (melanoma, UID 68008545)")
+    xml = client._request(
+        "esummary.fcgi", {"db": "mesh", "id": "68008545", "retmode": "xml"}
+    )
+    tutto_ok &= _verifica("mesh_esummary_match", "DS_MeshTerms" in xml, "contiene DS_MeshTerms")
+    tutto_ok &= _verifica("mesh_esummary_match", "Melanoma" in xml, "contiene il descriptor atteso")
+    _scrivi("mesh_esummary_match.xml", xml, chiave)
+
     if not tutto_ok:
         print("\nAlcune verifiche sono fallite: sostituire i PMID candidati in cima")
         print("a questo file con record che soddisfino la caratteristica richiesta,")
