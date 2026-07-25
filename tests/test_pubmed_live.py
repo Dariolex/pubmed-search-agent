@@ -71,3 +71,16 @@ def test_quindici_richieste_rapide_non_producono_429(client):
         client.esearch("melanoma", retmax=1)
     trascorso = time.monotonic() - inizio
     assert trascorso >= 0.4, "15 richieste non possono essere istantanee a 10 req/s"
+
+
+def test_resolve_mesh_reale_trova_melanoma(client):
+    match = client.resolve_mesh("melanoma")
+    assert match is not None
+    assert match.descriptor == "Melanoma"
+    assert len(match.entry_terms) > 0
+    assert match.mesh_ui.isdigit()
+
+
+def test_resolve_mesh_reale_nessun_match_per_termine_inventato(client):
+    match = client.resolve_mesh("zzzznonesistequestotermine12345")
+    assert match is None
