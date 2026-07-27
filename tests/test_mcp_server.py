@@ -66,3 +66,55 @@ def test_tool_registrato_con_nome_e_schema():
     tool = per_nome["search_pubmed_papers"]
     assert "PubMed" in (tool.description or "")
     assert "term" in tool.inputSchema["properties"]
+
+
+def test_retmax_troppo_grande_viene_clampato_a_200():
+    fake = FakeClient()
+    mcp_server._client = fake
+    mcp_server.search_pubmed_papers("melanoma[tiab]", retmax=100000)
+    assert fake.esearch_calls[0][1] == 200
+
+
+def test_retmax_zero_viene_clampato_a_1():
+    fake = FakeClient()
+    mcp_server._client = fake
+    mcp_server.search_pubmed_papers("melanoma[tiab]", retmax=0)
+    assert fake.esearch_calls[0][1] == 1
+
+
+def test_pubmed_error_si_propaga():
+    class ClientCheFallisce:
+        def esearch(self, term, *, retmax=100):
+            raise PubMedAPIError("query malformata")
+
+        def efetch(self, pmids):  # pragma: no cover - non raggiunto
+            return []
+
+    mcp_server._client = ClientCheFallisce()
+    with pytest.raises(PubMedAPIError):
+        mcp_server.search_pubmed_papers("query[[malformata", retmax=10)
+
+
+def test_client_riusato_tra_chiamate(monkeypatch):
+    mcp_server._client = None
+    creati = []
+
+    class ClientFinto:
+        pass
+
+    class ConfigFinta:
+        @staticmethod
+        def from_env():
+            return "config-finta"
+
+    def costruttore_finto(config):
+        creati.append(config)
+        return ClientFinto()
+
+    monkeypatch.setattr(mcp_server, "PubMedConfig", ConfigFinta)
+    monkeypatch.setattr(mcp_server, "PubMedClient", costruttore_finto)
+
+    primo = mcp_server._get_client()
+    secondo = mcp_server._get_client()
+    assert primo is secondo
+    assert len(creati) == 1  # il client viene costruito una sola volta
