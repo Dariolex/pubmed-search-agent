@@ -84,3 +84,27 @@ def test_resolve_mesh_reale_trova_melanoma(client):
 def test_resolve_mesh_reale_nessun_match_per_termine_inventato(client):
     match = client.resolve_mesh("zzzznonesistequestotermine12345")
     assert match is None
+
+
+def test_filtro_brevetto_reale_restituisce_dichiarazioni(client):
+    """Il filtro [cois] trova articoli reali e il testo della dichiarazione
+    arriva fino ad Article.coi_statement, dove il filtro semantico può leggerlo."""
+    from nl_query_translator import serialize
+
+    query = serialize(
+        {
+            "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+            "filtri": {"brevetto": True},
+        }
+    )
+    assert query == '"melanoma"[tiab] AND "patent*"[cois]'
+
+    ricerca = client.esearch(query, retmax=5)
+    assert ricerca.total_count > 0
+    articoli = client.efetch(ricerca.pmids)
+    # Ogni articolo trovato via [cois] ha per definizione una dichiarazione COI,
+    # e deve contenere la radice "patent" (in qualsiasi forma flessa).
+    assert articoli
+    for art in articoli:
+        assert art.coi_statement is not None
+        assert "patent" in art.coi_statement.lower()
