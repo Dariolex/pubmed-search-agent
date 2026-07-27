@@ -141,3 +141,23 @@ Se hai usato il filtro `brevetto`, dillo all'utente in modo esplicito: la ricerc
 Conflict of Interest Statement, quindi gli articoli che non pubblicano una dichiarazione di
 conflitto d'interesse non sono raggiungibili in alcun modo — non è un limite della query ma
 di come PubMed indicizza i dati.
+
+## Articoli simili o citazioni a partire da un PMID
+
+Se l'utente chiede articoli simili a uno studio specifico, o chi lo ha citato, e
+fornisce (o è emerso in una ricerca precedente) un PMID, non serve costruire una
+query booleana: usa `related_search` direttamente.
+
+```bash
+PYTHONPATH=src python -m related_search --pmid <PMID> --tipo simili --max 30
+PYTHONPATH=src python -m related_search --pmid <PMID> --tipo citazioni --max 30
+```
+
+`--tipo simili` trova articoli correlati per contenuto; `--tipo citazioni` trova
+articoli che citano quello di partenza (dal più recente al più vecchio). Restituisce
+lo stesso formato JSON di `run_search` (`total_count`, `articles` con abstract):
+applica lo stesso filtro di rilevanza semantica della fase 5, rispetto all'intento
+originale della richiesta, prima di presentare i risultati.
+
+Se `total_count` è 0, dillo esplicitamente: per `citazioni` può significare che
+l'articolo è troppo recente per avere ricevuto citazioni, non un errore.

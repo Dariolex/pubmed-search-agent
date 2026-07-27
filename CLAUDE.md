@@ -173,7 +173,11 @@ Nessuna chiave va mai committata o loggata in chiaro; `pubmed_client.py` deve le
    istanza di `PubMedClient` (rate limiter preservato). La traduzione NL e il filtro
    di rilevanza restano compito del modello client che chiama il tool.~~
    **(completato)**
-7. (Successivo) supporto a `elink.fcgi` per articoli correlati e catene di citazioni
+7. ~~`related_search.py` — supporto a `elink.fcgi` per articoli correlati
+   (`pubmed_pubmed`) e articoli che citano un PMID (`pubmed_pubmed_citedin`),
+   invocato dalla skill a partire da un PMID noto. `pubmed_pubmed_refs`
+   (riferimenti citati) escluso: dati assenti nella maggioranza dei casi
+   testati dal vivo.~~ **(completato)**
 
 ### Configurazione del server MCP in Claude Desktop/Code
 
