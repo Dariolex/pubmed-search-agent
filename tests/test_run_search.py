@@ -283,3 +283,46 @@ def test_main_errore_ncbi_con_carattere_non_cp1252_su_stderr(client, monkeypatch
         "Ci si aspetta la sequenza di escape ASCII prodotta da "
         "errors='backslashreplace'."
     )
+
+
+@responses.activate
+def test_esegui_passa_retstart_a_esearch(client):
+    """Verifica che retstart viaggi fino alla richiesta HTTP inviata a NCBI."""
+    responses.add(
+        responses.GET,
+        ESEARCH_URL,
+        body=ESEARCH_BODY_PMID_MATCH_EFETCH_BATCH,
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        EFETCH_URL,
+        body=(FIXTURES / "efetch_batch.xml").read_text(encoding="utf-8"),
+        status=200,
+    )
+    esegui("melanoma", retmax=5, client=client, retstart=10)
+    inviata = responses.calls[0].request
+    assert "retstart=10" in inviata.url
+
+
+@responses.activate
+def test_main_accetta_flag_retstart(client, monkeypatch, capsys):
+    monkeypatch.setattr("run_search.PubMedConfig.from_env", lambda: client._config)
+    monkeypatch.setattr("run_search.PubMedClient", lambda config: client)
+    responses.add(
+        responses.GET,
+        ESEARCH_URL,
+        body=ESEARCH_BODY_PMID_MATCH_EFETCH_BATCH,
+        status=200,
+    )
+    responses.add(
+        responses.POST,
+        EFETCH_URL,
+        body=(FIXTURES / "efetch_batch.xml").read_text(encoding="utf-8"),
+        status=200,
+    )
+    codice = main(argv=["--term", "melanoma", "--retmax", "5", "--retstart", "10"])
+    out = capsys.readouterr()
+    assert codice == 0
+    inviata = responses.calls[0].request
+    assert "retstart=10" in inviata.url

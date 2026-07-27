@@ -19,13 +19,13 @@ from pubmed_client import PubMedClient, PubMedConfig
 from pubmed_errors import PubMedError
 
 
-def esegui(term: str, retmax: int, client: PubMedClient) -> dict:
+def esegui(term: str, retmax: int, client: PubMedClient, retstart: int = 0) -> dict:
     """Esegue la ricerca e restituisce un dizionario serializzabile in JSON.
 
     Include `translated_query` e `warnings` di NCBI, utili a Claude per capire
     come PubMed ha reinterpretato la query e quali termini non hanno matchato.
     """
-    ricerca = client.esearch(term, retmax=retmax)
+    ricerca = client.esearch(term, retmax=retmax, retstart=retstart)
     articoli = client.efetch(ricerca.pmids)
     return {
         "total_count": ricerca.total_count,
@@ -43,11 +43,15 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--retmax", type=int, default=50, help="Numero massimo di articoli da recuperare"
     )
+    parser.add_argument(
+        "--retstart", type=int, default=0,
+        help="Offset per la paginazione (0-based): salta i primi N risultati",
+    )
     args = parser.parse_args(argv)
 
     try:
         client = PubMedClient(PubMedConfig.from_env())
-        risultato = esegui(args.term, args.retmax, client)
+        risultato = esegui(args.term, args.retmax, client, args.retstart)
     except PubMedError as exc:
         # I messaggi di PubMedError possono incorporare il testo grezzo di errore
         # restituito da NCBI: usiamo un encoding robusto per evitare UnicodeEncodeError

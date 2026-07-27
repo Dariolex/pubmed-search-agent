@@ -24,7 +24,7 @@ class FakeClient:
     def __init__(self):
         self.esearch_calls = []
 
-    def esearch(self, term, *, retmax=100):
+    def esearch(self, term, *, retmax=100, retstart=0):
         self.esearch_calls.append((term, retmax))
         return SearchResult(
             pmids=["1"],
@@ -84,7 +84,7 @@ def test_retmax_zero_viene_clampato_a_1():
 
 def test_pubmed_error_si_propaga():
     class ClientCheFallisce:
-        def esearch(self, term, *, retmax=100):
+        def esearch(self, term, *, retmax=100, retstart=0):
             raise PubMedAPIError("query malformata")
 
         def efetch(self, pmids):  # pragma: no cover - non raggiunto

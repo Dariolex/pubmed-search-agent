@@ -118,3 +118,43 @@ def test_main_errore_di_rete_esce_uno_su_stderr(monkeypatch, capsys):
     assert codice == 1
     assert out.out == ""
     assert "Errore" in out.err
+
+
+ELINK_TRE_LINK = """<?xml version="1.0" ?>
+<eLinkResult>
+  <LinkSet>
+    <DbFrom>pubmed</DbFrom>
+    <IdList><Id>21376230</Id></IdList>
+    <LinkSetDb>
+      <DbTo>pubmed</DbTo>
+      <LinkName>pubmed_pubmed</LinkName>
+      <Link><Id>21376230</Id></Link>
+      <Link><Id>111</Id></Link>
+      <Link><Id>222</Id></Link>
+    </LinkSetDb>
+  </LinkSet>
+</eLinkResult>
+"""
+
+
+@responses.activate
+def test_esegui_offset_salta_i_primi_link(client):
+    responses.add(responses.GET, ELINK_URL, body=ELINK_TRE_LINK, status=200)
+    responses.add(responses.POST, EFETCH_URL, body=_efetch_xml("222"), status=200)
+    risultato = esegui("21376230", "simili", 1, client, offset=1)
+    assert risultato["articles"][0]["pmid"] == "222"
+
+
+@responses.activate
+def test_main_accetta_flag_retstart(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "related_search.PubMedConfig.from_env",
+        lambda: PubMedConfig(tool="t", email="e@example.org", api_key="k"),
+    )
+    responses.add(responses.GET, ELINK_URL, body=ELINK_TRE_LINK, status=200)
+    responses.add(responses.POST, EFETCH_URL, body=_efetch_xml("222"), status=200)
+    codice = main(argv=["--pmid", "21376230", "--tipo", "simili", "--max", "1", "--retstart", "1"])
+    out = capsys.readouterr()
+    assert codice == 0
+    dati = json.loads(out.out)
+    assert dati["articles"][0]["pmid"] == "222"
