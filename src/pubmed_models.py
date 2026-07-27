@@ -278,3 +278,27 @@ def parse_mesh_esummary_xml(xml: str, termine_originale: str) -> MeshMatch:
         entry_terms=termini[1:],
         mesh_ui=mesh_ui,
     )
+
+
+def parse_elink_xml(xml: str, pmid_sorgente: str) -> list[str]:
+    """Estrae i PMID collegati da una risposta elink, escludendo la sorgente.
+
+    Il PMID sorgente compare sempre nel proprio LinkSetDb (verificato dal vivo:
+    è il primo elemento per un PMID valido, l'unico elemento per un PMID
+    inesistente — NCBI non restituisce <ERROR> in quel caso, risponde HTTP 200
+    con un LinkSetDb che contiene solo la sorgente). Escluderla qui rende "PMID
+    inesistente" e "nessun link trovato" indistinguibili a valle: entrambi
+    producono lista vuota, comportamento corretto in entrambi i casi.
+
+    Preserva l'ordine restituito da NCBI (per pubmed_pubmed_citedin è dal più
+    recente al più vecchio, verificato dal vivo): non riordina né deduplica
+    oltre a escludere la sorgente.
+    """
+    root = _root(xml)
+    return [
+        pmid
+        for pmid in (
+            _text(el) for el in root.findall("./LinkSet/LinkSetDb/Link/Id")
+        )
+        if pmid and pmid != pmid_sorgente
+    ]

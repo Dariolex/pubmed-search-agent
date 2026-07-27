@@ -10,6 +10,7 @@ from pubmed_models import (
     MeshMatch,
     find_api_error,
     parse_efetch_xml,
+    parse_elink_xml,
     parse_esearch_xml,
     parse_mesh_esummary_xml,
 )
@@ -525,3 +526,65 @@ def test_coi_statement_assente_vale_none():
 </PubmedArticleSet>"""
     art = parse_efetch_xml(xml)[0]
     assert art.coi_statement is None
+
+
+ELINK_SIMILI = """<?xml version="1.0" ?>
+<eLinkResult>
+  <LinkSet>
+    <DbFrom>pubmed</DbFrom>
+    <IdList><Id>21376230</Id></IdList>
+    <LinkSetDb>
+      <DbTo>pubmed</DbTo>
+      <LinkName>pubmed_pubmed</LinkName>
+      <Link><Id>21376230</Id></Link>
+      <Link><Id>25036871</Id></Link>
+      <Link><Id>26479834</Id></Link>
+    </LinkSetDb>
+  </LinkSet>
+</eLinkResult>
+"""
+
+ELINK_SOLO_AUTORIFERIMENTO = """<?xml version="1.0" ?>
+<eLinkResult>
+  <LinkSet>
+    <DbFrom>pubmed</DbFrom>
+    <IdList><Id>999999999</Id></IdList>
+    <LinkSetDb>
+      <DbTo>pubmed</DbTo>
+      <LinkName>pubmed_pubmed</LinkName>
+      <Link><Id>999999999</Id></Link>
+    </LinkSetDb>
+  </LinkSet>
+</eLinkResult>
+"""
+
+ELINK_NESSUN_LINKSETDB = """<?xml version="1.0" ?>
+<eLinkResult>
+  <LinkSet>
+    <DbFrom>pubmed</DbFrom>
+    <IdList><Id>21376230</Id></IdList>
+  </LinkSet>
+</eLinkResult>
+"""
+
+
+def test_elink_esclude_il_pmid_sorgente():
+    assert parse_elink_xml(ELINK_SIMILI, "21376230") == ["25036871", "26479834"]
+
+
+def test_elink_preserva_l_ordine_di_ncbi():
+    """citedin è ordinato dal più recente al più vecchio (verificato dal vivo):
+    il parser non deve riordinare."""
+    xml = ELINK_SIMILI.replace("25036871", "999").replace("26479834", "111")
+    assert parse_elink_xml(xml, "21376230") == ["999", "111"]
+
+
+def test_elink_solo_autoriferimento_restituisce_lista_vuota():
+    """Copre sia 'nessun link trovato' sia 'PMID inesistente': verificato dal
+    vivo che NCBI non produce <ERROR> per un PMID inesistente, risponde con
+    un LinkSetDb che contiene solo la sorgente stessa come unico link."""
+    assert parse_elink_xml(ELINK_SOLO_AUTORIFERIMENTO, "999999999") == []
+
+
+def test_elink_nessun_linksetdb_restituisce_lista_vuota():
+    assert parse_elink_xml(ELINK_NESSUN_LINKSETDB, "21376230") == []
