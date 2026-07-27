@@ -465,3 +465,54 @@ def test_fixture_mesh_esearch_no_match_reale_ha_count_zero():
     ricerca = parse_esearch_xml(xml)
     assert ricerca.total_count == 0
     assert ricerca.pmids == []
+
+
+ELINK_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
+
+ELINK_TRE_LINK = """<?xml version="1.0" ?>
+<eLinkResult>
+  <LinkSet>
+    <DbFrom>pubmed</DbFrom>
+    <IdList><Id>21376230</Id></IdList>
+    <LinkSetDb>
+      <DbTo>pubmed</DbTo>
+      <LinkName>pubmed_pubmed</LinkName>
+      <Link><Id>21376230</Id></Link>
+      <Link><Id>111</Id></Link>
+      <Link><Id>222</Id></Link>
+      <Link><Id>333</Id></Link>
+    </LinkSetDb>
+  </LinkSet>
+</eLinkResult>
+"""
+
+
+@responses.activate
+def test_elink_restituisce_pmid_collegati(client):
+    responses.add(responses.GET, ELINK_URL, body=ELINK_TRE_LINK, status=200)
+    risultato = client.elink("21376230", "pubmed_pubmed")
+    assert risultato == ["111", "222", "333"]
+
+
+@responses.activate
+def test_elink_invia_sempre_linkname(client):
+    responses.add(responses.GET, ELINK_URL, body=ELINK_TRE_LINK, status=200)
+    client.elink("21376230", "pubmed_pubmed_citedin")
+    inviata = responses.calls[0].request
+    assert "linkname=pubmed_pubmed_citedin" in inviata.url
+    assert "dbfrom=pubmed" in inviata.url
+
+
+@responses.activate
+def test_elink_tronca_lato_client_a_max_links(client):
+    responses.add(responses.GET, ELINK_URL, body=ELINK_TRE_LINK, status=200)
+    risultato = client.elink("21376230", "pubmed_pubmed", max_links=2)
+    assert risultato == ["111", "222"]
+
+
+@responses.activate
+def test_elink_propaga_errore_di_rete(client):
+    for _ in range(3):
+        responses.add(responses.GET, ELINK_URL, status=500)
+    with pytest.raises(PubMedHTTPError):
+        client.elink("21376230", "pubmed_pubmed")

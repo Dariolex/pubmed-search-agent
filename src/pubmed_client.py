@@ -34,6 +34,7 @@ from pubmed_models import (
     SearchResult,
     find_api_error,
     parse_efetch_xml,
+    parse_elink_xml,
     parse_esearch_xml,
     parse_mesh_esummary_xml,
 )
@@ -303,3 +304,26 @@ class PubMedClient:
             "esummary.fcgi", {"db": "mesh", "id": uid, "retmode": "xml"}
         )
         return parse_mesh_esummary_xml(xml_dettaglio, termine)
+
+    def elink(self, pmid: str, linkname: str, *, max_links: int = 30) -> list[str]:
+        """Trova PMID collegati a `pmid` secondo `linkname`.
+
+        `linkname` è obbligatorio, non opzionale: verificato dal vivo che
+        omettendolo NCBI restituisce tutti i tipi di link insieme, ~1.9 MB anche
+        per un solo PMID. Valori usati in questo progetto: "pubmed_pubmed"
+        (articoli simili), "pubmed_pubmed_citedin" (articoli che citano `pmid`).
+
+        `retmax` non ha effetto su elink (verificato dal vivo): il troncamento a
+        `max_links` avviene qui, lato client, dopo il parsing.
+        """
+        xml = self._request(
+            "elink.fcgi",
+            {
+                "dbfrom": "pubmed",
+                "db": "pubmed",
+                "id": pmid,
+                "linkname": linkname,
+                "retmode": "xml",
+            },
+        )
+        return parse_elink_xml(xml, pmid)[:max_links]
