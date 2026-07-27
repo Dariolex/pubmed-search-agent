@@ -1,0 +1,22 @@
+name: Tests
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  offline-suite:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements.txt
+      - run: pytest -v
+        # The default suite (pytest.ini: addopts = -m "not live") never calls NCBI,
+        # so no secrets are needed here. Live tests (`pytest -m live`) are opt-in only.

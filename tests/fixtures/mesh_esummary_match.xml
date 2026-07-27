@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE eSummaryResult PUBLIC "-//NLM//DTD esummary v1 20041029//EN" "https://eutils.ncbi.nlm.nih.gov/eutils/dtd/20041029/esummary-v1.dtd">
+<eSummaryResult>
+<DocSum>
+	<Id>68008545</Id>
+	<Item Name="DS_YearIntroduced" Type="String"></Item>
+	<Item Name="DS_ScopeNote" Type="String">A malignant neoplasm derived from cells that are capable of forming melanin, which may occur in the skin of any part of the body, in the eye, or, rarely, in the mucous membranes of the genitalia, anus, oral cavity, or other sites. It occurs mostly in adults and may originate de novo or from a pigmented nevus or malignant lentigo. Melanomas frequently metastasize widely, and the regional lymph nodes, liver, lungs, and brain are likely to be involved. The incidence of malignant skin melanomas is rising rapidly in all parts of the world. (Stedman, 25th ed; from Rook et al., Textbook of Dermatology, 4th ed, p2445)</Item>
+	<Item Name="DS_RegistryNumber" Type="String"></Item>
+	<Item Name="DS_HeadingMappedTo" Type="String"></Item>
+	<Item Name="DS_MeshTerms" Type="List">
+		<Item Name="string" Type="String">Melanoma</Item>
+		<Item Name="string" Type="String">Melanomas</Item>
+		<Item Name="string" Type="String">Malignant Melanoma</Item>
+		<Item Name="string" Type="String">Malignant Melanomas</Item>
+		<Item Name="string" Type="String">Melanoma, Malignant</Item>
+		<Item Name="string" Type="String">Melanomas, Malignant</Item>
+	</Item>
+	<Item Name="DS_Subheading" Type="List">
+		<Item Name="string" Type="String">blood</Item>
+		<Item Name="string" Type="String">blood supply</Item>
+		<Item Name="string" Type="String">cerebrospinal fluid</Item>
+		<Item Name="string" Type="String">chemically induced</Item>
+		<Item Name="string" Type="String">chemistry</Item>
+		<Item Name="string" Type="String">classification</Item>
+		<Item Name="string" Type="String">complications</Item>
+		<Item Name="string" Type="String">congenital</Item>
+		<Item Name="string" Type="String">diagnosis</Item>
+		<Item Name="string" Type="String">diagnostic imaging</Item>
+		<Item Name="string" Type="String">diet therapy</Item>
+		<Item Name="string" Type="String">drug therapy</Item>
+		<Item Name="string" Type="String">economics</Item>
+		<Item Name="string" Type="String">embryology</Item>
+		<Item Name="string" Type="String">enzymology</Item>
+		<Item Name="string" Type="String">epidemiology</Item>
+		<Item Name="string" Type="String">ethnology</Item>
+		<Item Name="string" Type="String">etiology</Item>
+		<Item Name="string" Type="String">genetics</Item>
+		<Item Name="string" Type="String">history</Item>
+		<Item Name="string" Type="String">immunology</Item>
+		<Item Name="string" Type="String">metabolism</Item>
+		<Item Name="string" Type="String">microbiology</Item>
+		<Item Name="string" Type="String">mortality</Item>
+		<Item Name="string" Type="String">nursing</Item>
+		<Item Name="string" Type="String">parasitology</Item>
+		<Item Name="string" Type="String">pathology</Item>
+		<Item Name="string" Type="String">physiopathology</Item>
+		<Item Name="string" Type="String">prevention and control</Item>
+		<Item Name="string" Type="String">psychology</Item>
+		<Item Name="string" Type="String">radiotherapy</Item>
+		<Item Name="string" Type="String">rehabilitation</Item>
+		<Item Name="string" Type="String">secondary</Item>
+		<Item Name="string" Type="String">surgery</Item>
+		<Item Name="string" Type="String">therapy</Item>
+		<Item Name="string" Type="String">ultrastructure</Item>
+		<Item Name="string" Type="String">urine</Item>
+		<Item Name="string" Type="String">veterinary</Item>
+		<Item Name="string" Type="String">virology</Item>
+	</Item>
+	<Item Name="DS_PaPx" Type="List"></Item>
+	<Item Name="DS_PreviousIndexing" Type="List"></Item>
+	<Item Name="DS_SeeRelated" Type="List"></Item>
+	<Item Name="DS_PaList" Type="List"></Item>
+	<Item Name="DS_IdxLinks" Type="List">
+		<Item Name="LinksType" Type="Structure">
+			<Item Name="Parent" Type="Integer">68018358</Item>
+			<Item Name="TreeNum" Type="String">C04.557.465.625.650.510</Item>
+			<Item Name="Children" Type="List">
+				<Item Name="int" Type="Integer">2106437</Item>
+				<Item Name="int" Type="Integer">68018327</Item>
+				<Item Name="int" Type="Integer">68018328</Item>
+				<Item Name="int" Type="Integer">68008546</Item>
+				<Item Name="int" Type="Integer">2108186</Item>
+			</Item>
+		</Item>
+		<Item Name="LinksType" Type="Structure">
+			<Item Name="Parent" Type="Integer">68018358</Item>
+			<Item Name="TreeNum" Type="String">C04.557.580.625.650.510</Item>
+			<Item Name="Children" Type="List">
+				<Item Name="int" Type="Integer">2106437</Item>
+				<Item Name="int" Type="Integer">68018327</Item>
+				<Item Name="int" Type="Integer">68018328</Item>
+				<Item Name="int" Type="Integer">68008546</Item>
+				<Item Name="int" Type="Integer">2108186</Item>
+			</Item>
+		</Item>
+		<Item Name="LinksType" Type="Structure">
+			<Item Name="Parent" Type="Integer">68018326</Item>
+			<Item Name="TreeNum" Type="String">C04.557.665.510</Item>
+			<Item Name="Children" Type="List">
+				<Item Name="int" Type="Integer">2106437</Item>
+				<Item Name="int" Type="Integer">68018327</Item>
+				<Item Name="int" Type="Integer">68018328</Item>
+				<Item Name="int" Type="Integer">68008546</Item>
+				<Item Name="int" Type="Integer">2108186</Item>
+			</Item>
+		</Item>
+		<Item Name="LinksType" Type="Structure">
+			<Item Name="Parent" Type="Integer">68012878</Item>
+			<Item Name="TreeNum" Type="String">C04.588.805.377</Item>
+			<Item Name="Children" Type="List"></Item>
+		</Item>
+		<Item Name="LinksType" Type="Structure">
+			<Item Name="Parent" Type="Integer">68012878</Item>
+			<Item Name="TreeNum" Type="String">C17.800.882.445</Item>
+			<Item Name="Children" Type="List"></Item>
+		</Item>
+	</Item>
+	<Item Name="DS_EntryDate" Type="Date">1/01/01 00:00</Item>
+	<Item Name="DS_RevisionDate" Type="Date">1/01/01 00:00</Item>
+	<Item Name="DS_HeadingMappedToList" Type="List"></Item>
+</DocSum>
+
+</eSummaryResult>

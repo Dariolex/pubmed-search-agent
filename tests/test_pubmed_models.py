@@ -4,7 +4,16 @@ import pytest
 from pathlib import Path
 
 from pubmed_errors import PubMedParseError
-from pubmed_models import Article, SearchResult, find_api_error, parse_efetch_xml, parse_esearch_xml
+from pubmed_models import (
+    Article,
+    SearchResult,
+    MeshMatch,
+    find_api_error,
+    parse_efetch_xml,
+    parse_elink_xml,
+    parse_esearch_xml,
+    parse_mesh_esummary_xml,
+)
 
 ESEARCH_BASE = """<?xml version="1.0" encoding="UTF-8" ?>
 <eSearchResult>
@@ -165,6 +174,7 @@ EFETCH_NOMINALE = """<?xml version="1.0" encoding="UTF-8" ?>
         <DescriptorName UI="D007167" MajorTopicYN="Y">Immunotherapy</DescriptorName>
       </MeshHeading>
     </MeshHeadingList>
+    <CoiStatement>The authors are co-inventors of a patent on the described method.</CoiStatement>
   </MedlineCitation>
   <PubmedData>
     <ArticleIdList>
@@ -403,3 +413,192 @@ def test_fixture_autore_collettivo_reale():
 def test_nessuna_fixture_contiene_api_key():
     for percorso in FIXTURES.glob("*.xml"):
         assert "api_key=" not in percorso.read_text(encoding="utf-8")
+
+
+def test_fixture_mesh_esummary_reale():
+    match = parse_mesh_esummary_xml(_fixture("mesh_esummary_match.xml"), "melanoma")
+    assert match.descriptor
+    assert match.mesh_ui.isdigit()
+    # L'entry term "Melanomas" è tra i sinonimi ufficiali attesi per questo descriptor.
+    assert any("Melanoma" in t for t in match.entry_terms) or match.descriptor == "Melanoma"
+
+
+MESH_ESUMMARY_MATCH = """<?xml version="1.0" ?>
+<eSummaryResult>
+<DocSum>
+	<Id>68008545</Id>
+	<Item Name="DS_ScopeNote" Type="String">A malignant neoplasm derived from cells capable of forming melanin.</Item>
+	<Item Name="DS_MeshTerms" Type="List">
+		<Item Name="string" Type="String">Melanoma</Item>
+		<Item Name="string" Type="String">Melanomas</Item>
+		<Item Name="string" Type="String">Malignant Melanoma</Item>
+		<Item Name="string" Type="String">Malignant Melanomas</Item>
+		<Item Name="string" Type="String">Melanoma, Malignant</Item>
+		<Item Name="string" Type="String">Melanomas, Malignant</Item>
+	</Item>
+</DocSum>
+</eSummaryResult>
+"""
+
+MESH_ESUMMARY_UN_SOLO_TERMINE = """<?xml version="1.0" ?>
+<eSummaryResult>
+<DocSum>
+	<Id>68007167</Id>
+	<Item Name="DS_MeshTerms" Type="List">
+		<Item Name="string" Type="String">Immunotherapy</Item>
+	</Item>
+</DocSum>
+</eSummaryResult>
+"""
+
+MESH_ESUMMARY_SENZA_DOCSUM = """<?xml version="1.0" ?>
+<eSummaryResult>
+</eSummaryResult>
+"""
+
+MESH_ESUMMARY_MESHTERMS_VUOTO = """<?xml version="1.0" ?>
+<eSummaryResult>
+<DocSum>
+	<Id>99999999</Id>
+	<Item Name="DS_MeshTerms" Type="List">
+	</Item>
+</DocSum>
+</eSummaryResult>
+"""
+
+
+def test_parse_mesh_esummary_descriptor_e_entry_terms():
+    match = parse_mesh_esummary_xml(MESH_ESUMMARY_MATCH, "melanoma")
+    assert isinstance(match, MeshMatch)
+    assert match.termine_originale == "melanoma"
+    assert match.descriptor == "Melanoma"
+    assert match.entry_terms == [
+        "Melanomas",
+        "Malignant Melanoma",
+        "Malignant Melanomas",
+        "Melanoma, Malignant",
+        "Melanomas, Malignant",
+    ]
+    assert match.mesh_ui == "68008545"
+
+
+def test_parse_mesh_esummary_un_solo_termine_entry_terms_vuoto():
+    match = parse_mesh_esummary_xml(MESH_ESUMMARY_UN_SOLO_TERMINE, "immunotherapy")
+    assert match.descriptor == "Immunotherapy"
+    assert match.entry_terms == []
+    assert match.mesh_ui == "68007167"
+
+
+def test_parse_mesh_esummary_senza_docsum_solleva_parse_error():
+    with pytest.raises(PubMedParseError, match="DocSum"):
+        parse_mesh_esummary_xml(MESH_ESUMMARY_SENZA_DOCSUM, "x")
+
+
+def test_parse_mesh_esummary_meshterms_vuoto_solleva_parse_error():
+    with pytest.raises(PubMedParseError, match="DS_MeshTerms"):
+        parse_mesh_esummary_xml(MESH_ESUMMARY_MESHTERMS_VUOTO, "x")
+
+
+def test_mesh_match_e_immutabile():
+    match = parse_mesh_esummary_xml(MESH_ESUMMARY_MATCH, "melanoma")
+    with pytest.raises(Exception):
+        match.descriptor = "altro"
+
+
+def test_coi_statement_estratto():
+    art = parse_efetch_xml(EFETCH_NOMINALE)[0]
+    assert art.coi_statement == (
+        "The authors are co-inventors of a patent on the described method."
+    )
+
+
+def test_coi_statement_assente_vale_none():
+    """Un record senza <CoiStatement> non deve produrre stringa vuota:
+    il filtro semantico deve distinguere «nessuna dichiarazione» da «vuota»."""
+    xml = """<?xml version="1.0" encoding="UTF-8" ?>
+<PubmedArticleSet>
+<PubmedArticle>
+  <MedlineCitation>
+    <PMID Version="1">38000002</PMID>
+    <Article><ArticleTitle>Senza dichiarazione COI</ArticleTitle></Article>
+  </MedlineCitation>
+</PubmedArticle>
+</PubmedArticleSet>"""
+    art = parse_efetch_xml(xml)[0]
+    assert art.coi_statement is None
+
+
+ELINK_SIMILI = """<?xml version="1.0" ?>
+<eLinkResult>
+  <LinkSet>
+    <DbFrom>pubmed</DbFrom>
+    <IdList><Id>21376230</Id></IdList>
+    <LinkSetDb>
+      <DbTo>pubmed</DbTo>
+      <LinkName>pubmed_pubmed</LinkName>
+      <Link><Id>21376230</Id></Link>
+      <Link><Id>25036871</Id></Link>
+      <Link><Id>26479834</Id></Link>
+    </LinkSetDb>
+  </LinkSet>
+</eLinkResult>
+"""
+
+ELINK_SOLO_AUTORIFERIMENTO = """<?xml version="1.0" ?>
+<eLinkResult>
+  <LinkSet>
+    <DbFrom>pubmed</DbFrom>
+    <IdList><Id>999999999</Id></IdList>
+    <LinkSetDb>
+      <DbTo>pubmed</DbTo>
+      <LinkName>pubmed_pubmed</LinkName>
+      <Link><Id>999999999</Id></Link>
+    </LinkSetDb>
+  </LinkSet>
+</eLinkResult>
+"""
+
+ELINK_NESSUN_LINKSETDB = """<?xml version="1.0" ?>
+<eLinkResult>
+  <LinkSet>
+    <DbFrom>pubmed</DbFrom>
+    <IdList><Id>21376230</Id></IdList>
+  </LinkSet>
+</eLinkResult>
+"""
+
+
+def test_elink_esclude_il_pmid_sorgente():
+    assert parse_elink_xml(ELINK_SIMILI, "21376230") == ["25036871", "26479834"]
+
+
+def test_elink_preserva_l_ordine_di_ncbi():
+    """citedin è ordinato dal più recente al più vecchio (verificato dal vivo):
+    il parser non deve riordinare."""
+    xml = ELINK_SIMILI.replace("25036871", "999").replace("26479834", "111")
+    assert parse_elink_xml(xml, "21376230") == ["999", "111"]
+
+
+def test_elink_solo_autoriferimento_restituisce_lista_vuota():
+    """Copre sia 'nessun link trovato' sia 'PMID inesistente': verificato dal
+    vivo che NCBI non produce <ERROR> per un PMID inesistente, risponde con
+    un LinkSetDb che contiene solo la sorgente stessa come unico link."""
+    assert parse_elink_xml(ELINK_SOLO_AUTORIFERIMENTO, "999999999") == []
+
+
+def test_elink_nessun_linksetdb_restituisce_lista_vuota():
+    assert parse_elink_xml(ELINK_NESSUN_LINKSETDB, "21376230") == []
+
+
+def test_fixture_elink_simili_reale_esclude_la_sorgente():
+    xml = (FIXTURES / "elink_simili.xml").read_text(encoding="utf-8")
+    risultato = parse_elink_xml(xml, "33301246")
+    assert "33301246" not in risultato
+    assert len(risultato) > 0
+
+
+def test_fixture_elink_citazioni_reale_esclude_la_sorgente():
+    xml = (FIXTURES / "elink_citazioni.xml").read_text(encoding="utf-8")
+    risultato = parse_elink_xml(xml, "33301246")
+    assert "33301246" not in risultato
+    assert len(risultato) > 0

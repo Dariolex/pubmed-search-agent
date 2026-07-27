@@ -71,3 +71,56 @@ def test_quindici_richieste_rapide_non_producono_429(client):
         client.esearch("melanoma", retmax=1)
     trascorso = time.monotonic() - inizio
     assert trascorso >= 0.4, "15 richieste non possono essere istantanee a 10 req/s"
+
+
+def test_resolve_mesh_reale_trova_melanoma(client):
+    match = client.resolve_mesh("melanoma")
+    assert match is not None
+    assert match.descriptor == "Melanoma"
+    assert len(match.entry_terms) > 0
+    assert match.mesh_ui.isdigit()
+
+
+def test_resolve_mesh_reale_nessun_match_per_termine_inventato(client):
+    match = client.resolve_mesh("zzzznonesistequestotermine12345")
+    assert match is None
+
+
+def test_filtro_brevetto_reale_restituisce_dichiarazioni(client):
+    """Il filtro [cois] trova articoli reali e il testo della dichiarazione
+    arriva fino ad Article.coi_statement, dove il filtro semantico può leggerlo."""
+    from nl_query_translator import serialize
+
+    query = serialize(
+        {
+            "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+            "filtri": {"brevetto": True},
+        }
+    )
+    assert query == '"melanoma"[tiab] AND "patent*"[cois]'
+
+    ricerca = client.esearch(query, retmax=5)
+    assert ricerca.total_count > 0
+    articoli = client.efetch(ricerca.pmids)
+    # Ogni articolo trovato via [cois] ha per definizione una dichiarazione COI,
+    # e deve contenere la radice "patent" (in qualsiasi forma flessa).
+    assert articoli
+    for art in articoli:
+        assert art.coi_statement is not None
+        assert "patent" in art.coi_statement.lower()
+
+
+def test_elink_simili_reale_esclude_la_sorgente(client):
+    pmid = "33301246"
+    collegati = client.elink(pmid, "pubmed_pubmed", max_links=10)
+    assert collegati
+    assert pmid not in collegati
+    assert len(collegati) <= 10
+
+
+def test_elink_citazioni_reale_esclude_la_sorgente(client):
+    pmid = "33301246"
+    collegati = client.elink(pmid, "pubmed_pubmed_citedin", max_links=10)
+    assert pmid not in collegati
+    assert len(collegati) <= 10
+    # Un PMID pubblicato può non avere ancora citazioni: non si assume len > 0.

@@ -57,7 +57,7 @@ def _rendi_concetto(concetto: dict) -> str:
 def _rendi_filtri(filtri: dict) -> str:
     """Filtri opzionali -> segmenti ` AND ...`. Stringa vuota se nessun filtro.
 
-    Ordine canonico: date, tipi di studio, lingua.
+    Ordine canonico: date, tipi di studio, lingua, brevetto.
     """
     parti = []
 
@@ -86,6 +86,13 @@ def _rendi_filtri(filtri: dict) -> str:
     lingua = filtri.get("lingua")
     if lingua and _pulisci(lingua):
         parti.append(_frase(lingua, "la"))
+
+    if filtri.get("brevetto"):
+        # PubMed non indicizza i brevetti: il Conflict of Interest Statement è
+        # l'unico campo dove compaiono (verificato dal vivo: [si] e [sb] danno 0).
+        # In [cois] la troncatura sopravvive alle virgolette, quindi _frase è
+        # utilizzabile senza casi speciali.
+        parti.append(_frase("patent*", "cois"))
 
     if not parti:
         return ""

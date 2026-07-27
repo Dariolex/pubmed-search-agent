@@ -2,3 +2,4 @@ requests
 python-dotenv
 pytest>=7.0
 responses
+mcp[cli]

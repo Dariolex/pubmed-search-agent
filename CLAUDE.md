@@ -93,7 +93,7 @@ Endpoint principali usati dal progetto:
 | `esearch.fcgi?db=pubmed&term=...` | Esegue la query, restituisce PMID | Usare `usehistory=y` per query con molti risultati; supporta `retmax`, `datetype`, `mindate`/`maxdate` |
 | `esummary.fcgi?db=pubmed&id=...` | Metadati sintetici (titolo, autori, journal, data) | Fase successiva, non nel MVP: `efetch` restituisce già titolo, autori, journal e data insieme all'abstract |
 | `efetch.fcgi?db=pubmed&id=...&rettype=abstract&retmode=xml` | Abstract completo | Necessario per il filtro di rilevanza semantica |
-| `elink.fcgi` | Articoli correlati / citazioni | Fase successiva, non nel MVP |
+| `elink.fcgi?dbfrom=pubmed&db=pubmed&id=...&linkname=...` | Articoli correlati / citazioni | Implementato in `related_search.py` (`PubMedClient.elink`); `linkname` sempre esplicito (`pubmed_pubmed` o `pubmed_pubmed_citedin`), il PMID sorgente va sempre escluso dal risultato |
 
 **Rate limiting:** 3 richieste/secondo senza `api_key`, **10 richieste/secondo** con `api_key` valida. `pubmed_client.py` deve implementare un limitatore esplicito (es. token bucket) e gestire i retry su HTTP 429, non affidarsi solo alla libreria HTTP.
 
@@ -108,11 +108,15 @@ corrispondenze, ma la ricerca è comunque riuscita: quei figli finiscono in
 darebbe una lista vuota indistinguibile da «nessun match».
 
 **Sintassi di ricerca PubMed rilevante da generare in traduzione:**
-- Tag di campo: `[tiab]` (title/abstract), `[MeSH Terms]`, `[au]` (autore), `[ta]` (rivista), `[dp]` (data pubblicazione), `[pt]` (tipo di pubblicazione, es. `"randomized controlled trial"[pt]`), `[la]` (lingua)
+- Tag di campo: `[tiab]` (title/abstract), `[MeSH Terms]`, `[au]` (autore), `[ta]` (rivista), `[dp]` (data pubblicazione), `[pt]` (tipo di pubblicazione, es. `"randomized controlled trial"[pt]`), `[la]` (lingua), `[cois]` (conflict of interest statement)
 - Operatori booleani: `AND`, `OR`, `NOT` (maiuscoli, obbligatori)
 - Intervalli di date: `("2023"[dp] : "2026"[dp])`
 - Esplosione MeSH automatica: PubMed la applica di default sui termini `[MeSH Terms]`; non serve gestirla manualmente
 - Frasi esatte tra virgolette per evitare tokenizzazione indesiderata
+- **Brevetti:** PubMed non li indicizza (nessun campo `[si]` o subset dedicato, verificato
+  dal vivo). L'unico proxy è il Conflict of Interest Statement: `"patent*"[cois]`. È testo
+  libero, quindi cattura anche le dichiarazioni negative; `Article.coi_statement` espone il
+  testo così che il filtro semantico possa scartarle.
 
 ## 5. Traduzione linguaggio naturale → query PubMed
 
@@ -160,9 +164,39 @@ Nessuna chiave va mai committata o loggata in chiaro; `pubmed_client.py` deve le
 4. ~~Filtro di rilevanza: implementato inline nella skill `/pubmed-search` (Claude legge
    gli abstract e ordina per pertinenza); `relevance_filter.py` come modulo dedicato resta
    un'evoluzione futura~~ **(completato, inline)**
-5. `mesh_resolver.py` — miglioramento della traduzione con termini MeSH controllati
-6. `mcp_server.py` — esposizione come tool MCP `search_pubmed_papers`, utilizzabile da Claude Desktop/Code
-7. (Successivo) supporto a `elink.fcgi` per articoli correlati e catene di citazioni
+5. ~~`mesh_resolver.py` — risoluzione autoritativa verso il vocabolario MeSH
+   controllato di NCBI (`PubMedClient.resolve_mesh`, `db=mesh`), invocata dalla
+   skill `/pubmed-search` prima della serializzazione~~ **(completato)**
+6. ~~`mcp_server.py` — esposizione come tool MCP `search_pubmed_papers` (FastMCP,
+   transport stdio), tool a grana fine che prende una query in sintassi PubMed e
+   restituisce gli articoli con abstract; riusa `run_search.esegui` e un'unica
+   istanza di `PubMedClient` (rate limiter preservato). La traduzione NL e il filtro
+   di rilevanza restano compito del modello client che chiama il tool.~~
+   **(completato)**
+7. ~~`related_search.py` — supporto a `elink.fcgi` per articoli correlati
+   (`pubmed_pubmed`) e articoli che citano un PMID (`pubmed_pubmed_citedin`),
+   invocato dalla skill a partire da un PMID noto. `pubmed_pubmed_refs`
+   (riferimenti citati) escluso: dati assenti nella maggioranza dei casi
+   testati dal vivo.~~ **(completato)**
+
+### Configurazione del server MCP in Claude Desktop/Code
+
+Aggiungere a `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "pubmed-search": {
+      "command": "python",
+      "args": ["C:\\percorso\\assoluto\\src\\mcp_server.py"]
+    }
+  }
+}
+```
+
+Il `.env` (`NCBI_API_KEY`, `NCBI_TOOL_NAME`, `NCBI_EMAIL`) deve essere raggiungibile dal
+processo, oppure le variabili vanno passate in un blocco `"env"` nella stessa config.
+Nuova dipendenza: `mcp[cli]` (vedi `requirements.txt`).
 
 ## 9. Testing
 

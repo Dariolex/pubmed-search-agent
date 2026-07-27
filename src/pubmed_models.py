@@ -100,6 +100,11 @@ class Article:
     `pub_date` resta una stringa ISO parziale ("2024", "2024-03", "2024-03-15")
     perché PubMed ha date genuinamente incomplete; un oggetto date costringerebbe
     a inventare mese e giorno.
+
+    `coi_statement` è la dichiarazione di conflitto d'interesse (<CoiStatement>),
+    None quando l'articolo non ne ha una. È l'unico posto in cui PubMed registra i
+    brevetti degli autori, e va letto per distinguere le dichiarazioni positive
+    («è co-inventore di un brevetto») da quelle negative («non detiene brevetti»).
     """
 
     pmid: str
@@ -111,6 +116,7 @@ class Article:
     pub_types: list[str]
     mesh_terms: list[str]
     doi: str | None
+    coi_statement: str | None = None
 
 
 _MESI = {
@@ -222,6 +228,77 @@ def parse_efetch_xml(xml: str) -> list[Article]:
                     )
                 ],
                 doi=_doi(article, pubmed_article),
+                coi_statement=_text(citazione.find("CoiStatement")) or None,
             )
         )
     return articoli
+
+
+@dataclass(frozen=True)
+class MeshMatch:
+    """Esito di una risoluzione verso il vocabolario MeSH controllato di NCBI.
+
+    `descriptor` è il nome ufficiale dell'intestazione MeSH (il primo elemento di
+    <DS_MeshTerms>); `entry_terms` sono i sinonimi ufficiali (gli elementi
+    successivi) — non gli stessi sinonimi che Claude estrae nella fase 1, ma quelli
+    riconosciuti dal vocabolario controllato.
+    """
+
+    termine_originale: str
+    descriptor: str
+    entry_terms: list[str]
+    mesh_ui: str
+
+
+def parse_mesh_esummary_xml(xml: str, termine_originale: str) -> MeshMatch:
+    """Risposta ESummary di db=mesh -> MeshMatch.
+
+    `termine_originale` non compare nella risposta NCBI (è il termine cercato dal
+    chiamante): va passato esplicitamente, non estratto dall'XML.
+    """
+    root = _root(xml)
+    docsum = root.find("DocSum")
+    if docsum is None:
+        raise PubMedParseError("Risposta ESummary priva di <DocSum>")
+    mesh_ui = _text(docsum.find("Id"))
+    mesh_terms_node = next(
+        (item for item in docsum.findall("Item") if item.get("Name") == "DS_MeshTerms"),
+        None,
+    )
+    termini = [
+        _text(el)
+        for el in (mesh_terms_node.findall("Item") if mesh_terms_node is not None else [])
+    ]
+    termini = [t for t in termini if t]
+    if not termini:
+        raise PubMedParseError(f"DS_MeshTerms vuoto o assente per UID {mesh_ui!r}")
+    return MeshMatch(
+        termine_originale=termine_originale,
+        descriptor=termini[0],
+        entry_terms=termini[1:],
+        mesh_ui=mesh_ui,
+    )
+
+
+def parse_elink_xml(xml: str, pmid_sorgente: str) -> list[str]:
+    """Estrae i PMID collegati da una risposta elink, escludendo la sorgente.
+
+    Il PMID sorgente compare sempre nel proprio LinkSetDb (verificato dal vivo:
+    è il primo elemento per un PMID valido, l'unico elemento per un PMID
+    inesistente — NCBI non restituisce <ERROR> in quel caso, risponde HTTP 200
+    con un LinkSetDb che contiene solo la sorgente). Escluderla qui rende "PMID
+    inesistente" e "nessun link trovato" indistinguibili a valle: entrambi
+    producono lista vuota, comportamento corretto in entrambi i casi.
+
+    Preserva l'ordine restituito da NCBI (per pubmed_pubmed_citedin è dal più
+    recente al più vecchio, verificato dal vivo): non riordina né deduplica
+    oltre a escludere la sorgente.
+    """
+    root = _root(xml)
+    return [
+        pmid
+        for pmid in (
+            _text(el) for el in root.findall("./LinkSet/LinkSetDb/Link/Id")
+        )
+        if pmid and pmid != pmid_sorgente
+    ]

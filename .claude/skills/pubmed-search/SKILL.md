@@ -29,15 +29,17 @@ Analizza la richiesta NL e costruisci questo JSON (schema esteso con provenienza
   "filtri": {
     "date": {"da": "<anno>", "a": "<anno>", "tipo": "dp"},
     "tipi_studio": ["<publication type>"],
-    "lingua": "<lingua o null>"
+    "lingua": "<lingua o null>",
+    "brevetto": true
   }
 }
 ```
 
 Linee guida per l'estrazione:
 - **Concetti**: i nuclei clinici/scientifici della richiesta. Aggiungi `sinonimi`
-  utili (varianti terminologiche, non traduzioni). Popola `mesh` solo quando il
-  termine MeSH controllato è ovvio (es. `melanoma`, `immunotherapy`); altrimenti `null`.
+  utili (varianti terminologiche, non traduzioni). Per il campo `mesh`, se hai un
+  candidato plausibile (es. `melanoma`), non limitarti al tuo giudizio: verificalo
+  con il resolver (vedi sotto) prima di popolarlo nel JSON finale.
 - **operatore_tra_concetti**: `AND` di norma (l'utente vuole tutti i concetti insieme).
   Usa `OR` solo se la richiesta è esplicitamente alternativa ("melanoma o carcinoma").
 - **Esclusioni**: frasi come "escludendo X", "senza X", "non case report" → `NOT`.
@@ -47,8 +49,35 @@ Linee guida per l'estrazione:
 - **Tipi di studio**: "trial randomizzati" → `randomized controlled trial`; "meta-analisi"
   → `meta-analysis`; "review" → `review`. Più tipi vengono uniti in OR automaticamente.
 - **Lingua**: solo se la richiesta la specifica ("in inglese" → `english`).
+- **Brevetto**: imposta `brevetto: true` quando la richiesta chiede articoli i cui autori
+  dichiarano un brevetto ("che dichiarano un brevetto", "con brevetto registrato", "autori
+  con brevetti"); **ometti** il campo (non impostarlo a `false`) quando non richiesto.
+  Aggiunge ` AND "patent*"[cois]` alla query. **Attenzione**: PubMed non
+  indicizza i brevetti — il filtro cerca nel Conflict of Interest Statement, che è testo
+  libero. Cattura quindi anche le dichiarazioni *negative* ("gli autori non detengono
+  brevetti"): vanno scartate leggendo `coi_statement` nella fase 5.
 
 `provenienza` non entra nella query: serve a te e all'utente per il debug.
+
+### 1bis. Verifica i termini MeSH candidati (opzionale, per concetto)
+
+Per ogni concetto con un candidato MeSH plausibile, verifica il termine ufficiale
+prima di scrivere il JSON finale:
+
+```bash
+PYTHONPATH=src python -m mesh_resolver --termine "melanoma"
+```
+
+Restituisce JSON con `descriptor` (il nome ufficiale, o `null` se nessun match
+esatto) ed `entry_terms` (sinonimi ufficiali del vocabolario MeSH). Se `descriptor`
+non è `null`, usalo come valore di `mesh` nel JSON del concetto e valuta se
+aggiungere gli `entry_terms` più pertinenti a `sinonimi`. Se `descriptor` è `null`
+o il comando esce con errore, lascia `mesh: null` per quel concetto — è lo stesso
+comportamento di oggi, nessuna interruzione del flusso.
+
+Questo passo è opzionale ma consigliato quando un concetto ha un candidato MeSH
+plausibile: sostituisce il giudizio estemporaneo con una verifica autoritativa
+contro il vocabolario controllato di NCBI.
 
 ### 2. Genera la query PubMed (fase deterministica)
 
@@ -76,13 +105,28 @@ PYTHONPATH=src python -m run_search --term "<query generata>" --retmax 30
 
 Restituisce JSON con `total_count`, `translated_query` (come NCBI ha reinterpretato
 la query — utile se i risultati sorprendono), `warnings` e `articles` (con `title`,
-`abstract`, `authors`, `journal`, `pub_date`, `pub_types`, `pmid`).
+`abstract`, `authors`, `journal`, `pub_date`, `pub_types`, `pmid`, `mesh_terms`, `doi`,
+`coi_statement`).
 
 ### 5. Filtra e ordina per rilevanza
 
 Leggi gli abstract e valuta la pertinenza di ciascun articolo rispetto a
 `intento_originale`. Scarta o declassa i non pertinenti (un articolo può matchare la
 query booleana ma non l'intento reale). Ordina dal più al meno pertinente.
+
+**Se hai attivato il filtro `brevetto`**, leggi anche `coi_statement` di ogni articolo (la
+dichiarazione di conflitto d'interesse) e **scarta le dichiarazioni negative**: frasi come
+"the authors hold no patents", "no ... patent licensing", "no patents relevant to this work"
+indicano che l'articolo NON dichiara alcun brevetto, pur avendo matchato la query booleana.
+Il criterio è che la negazione sia riferita **ai brevetti**, non a un conflitto d'interesse
+generico.
+
+Tieni invece le dichiarazioni positive ("is co-inventor of a patent", "filed a patent
+application", "receives royalties from a patent") e i casi misti, dove almeno un autore
+dichiara un brevetto. **Attenzione**: una coda come "the authors declare no *other*
+competing interests" dopo una disclosure di brevetto segnala un POSITIVO, non un negativo —
+è il pattern più frequente di falso scarto. Nella presentazione dei risultati, cita la parte
+pertinente della dichiarazione come motivazione.
 
 Segnala anche gli articoli che sembrano pertinenti ma che la query booleana potrebbe
 aver escluso (falsi negativi da query troppo restrittiva), suggerendo un allargamento.
@@ -92,3 +136,28 @@ aver escluso (falsi negativi da query troppo restrittiva), suggerendo un allarga
 Per ogni articolo pertinente: titolo, autori (primi 3), rivista, anno, PMID, e una
 breve motivazione della rilevanza. In testa: la query PubMed generata e il link web.
 Se `total_count` è 0, segnala che la query è troppo restrittiva e proponi come allargarla.
+
+Se hai usato il filtro `brevetto`, dillo all'utente in modo esplicito: la ricerca si basa sul
+Conflict of Interest Statement, quindi gli articoli che non pubblicano una dichiarazione di
+conflitto d'interesse non sono raggiungibili in alcun modo — non è un limite della query ma
+di come PubMed indicizza i dati.
+
+## Articoli simili o citazioni a partire da un PMID
+
+Se l'utente chiede articoli simili a uno studio specifico, o chi lo ha citato, e
+fornisce (o è emerso in una ricerca precedente) un PMID, non serve costruire una
+query booleana: usa `related_search` direttamente.
+
+```bash
+PYTHONPATH=src python -m related_search --pmid <PMID> --tipo simili --max 30
+PYTHONPATH=src python -m related_search --pmid <PMID> --tipo citazioni --max 30
+```
+
+`--tipo simili` trova articoli correlati per contenuto; `--tipo citazioni` trova
+articoli che citano quello di partenza (dal più recente al più vecchio). Restituisce
+lo stesso formato JSON di `run_search` (`total_count`, `articles` con abstract):
+applica lo stesso filtro di rilevanza semantica della fase 5, rispetto all'intento
+originale della richiesta, prima di presentare i risultati.
+
+Se `total_count` è 0, dillo esplicitamente: per `citazioni` può significare che
+l'articolo è troppo recente per avere ricevuto citazioni, non un errore.

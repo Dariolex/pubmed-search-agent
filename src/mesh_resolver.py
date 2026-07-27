@@ -1,15 +1,58 @@
 """
 mesh_resolver.py
 
-Mappatura di termini liberi (linguaggio naturale) verso termini MeSH controllati.
+Entry-point CLI: risolve un termine libero verso il descriptor MeSH ufficiale di
+NCBI (quando esiste un match esatto sull'intestazione), tramite
+pubmed_client.PubMedClient.resolve_mesh.
 
-Responsabilità (vedi CLAUDE.md sezioni 3 e 8):
-- Migliorare la traduzione NL -> query PubMed risolvendo i concetti estratti da
-  nl_query_translator.py verso i termini MeSH ufficiali, quando disponibile un match
-  affidabile, invece di affidarsi esclusivamente al tag [tiab].
-- Non gestisce l'esplosione automatica dei termini MeSH (PubMed la applica di default sui
-  termini [MeSH Terms]); si occupa solo della risoluzione termine libero -> termine MeSH.
-
-Componente pianificato per una fase successiva del MVP (step 5 della roadmap), da sviluppare
-dopo che pubmed_client.py e nl_query_translator.py sono stabili.
+Nessuna logica NL, nessun parsing XML proprio (delegato a pubmed_client/pubmed_models).
+Un errore di rete o l'assenza di un match affidabile producono lo stesso esito
+pratico per il chiamante (la skill): nessun termine MeSH, fallback su [tiab].
 """
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import json
+import sys
+
+from pubmed_client import PubMedClient, PubMedConfig
+from pubmed_errors import PubMedError
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Risolve un termine verso il descriptor MeSH ufficiale di NCBI."
+    )
+    parser.add_argument("--termine", required=True, help="Termine libero da risolvere")
+    args = parser.parse_args(argv)
+
+    try:
+        client = PubMedClient(PubMedConfig.from_env())
+        match = client.resolve_mesh(args.termine)
+    except PubMedError as exc:
+        # Il messaggio puo' incorporare testo grezzo di NCBI: encoding robusto per
+        # evitare UnicodeEncodeError su console Windows con encoding restrittivo.
+        sys.stderr.buffer.write(
+            f"Errore: {exc}\n".encode(sys.stderr.encoding or "utf-8", errors="backslashreplace")
+        )
+        return 1
+
+    if match is None:
+        risultato = {
+            "termine_originale": args.termine,
+            "descriptor": None,
+            "entry_terms": [],
+            "mesh_ui": None,
+        }
+    else:
+        risultato = dataclasses.asdict(match)
+
+    json.dump(risultato, sys.stdout, ensure_ascii=True, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

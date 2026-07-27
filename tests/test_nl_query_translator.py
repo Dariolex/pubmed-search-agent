@@ -473,3 +473,56 @@ def test_cli_errore_con_carattere_non_cp1252_su_stderr_usa_backslashreplace(monk
         "Ci si aspetta la sequenza di escape ASCII prodotta da "
         "errors='backslashreplace'."
     )
+
+
+def test_filtro_brevetto():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"brevetto": True},
+    }
+    assert serialize(intermedio) == '"melanoma"[tiab] AND "patent*"[cois]'
+
+
+def test_filtro_brevetto_assente_non_aggiunge_nulla():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {},
+    }
+    assert serialize(intermedio) == '"melanoma"[tiab]'
+
+
+def test_filtro_brevetto_false_non_aggiunge_nulla():
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"brevetto": False},
+    }
+    assert serialize(intermedio) == '"melanoma"[tiab]'
+
+
+def test_filtro_brevetto_ultimo_nell_ordine_canonico():
+    """Il brevetto si accoda dopo date, tipi di studio e lingua."""
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {
+            "date": {"da": "2023", "a": "2026", "tipo": "dp"},
+            "tipi_studio": ["review"],
+            "lingua": "english",
+            "brevetto": True,
+        },
+    }
+    assert serialize(intermedio) == (
+        '"melanoma"[tiab] AND ("2023"[dp] : "2026"[dp]) AND '
+        '"review"[pt] AND "english"[la] AND "patent*"[cois]'
+    )
+
+
+def test_filtro_brevetto_precede_le_esclusioni():
+    """Le esclusioni NOT restano in coda, dopo tutti i filtri."""
+    intermedio = {
+        "concetti": [{"termine": "melanoma", "sinonimi": [], "mesh": None}],
+        "filtri": {"brevetto": True},
+        "esclusioni": [{"termine": "case reports", "campo": "pt"}],
+    }
+    assert serialize(intermedio) == (
+        '"melanoma"[tiab] AND "patent*"[cois] NOT "case reports"[pt]'
+    )

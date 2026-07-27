@@ -28,7 +28,16 @@ from dotenv import load_dotenv
 import requests
 
 from pubmed_errors import PubMedAPIError, PubMedConfigError, PubMedHTTPError
-from pubmed_models import Article, SearchResult, find_api_error, parse_efetch_xml, parse_esearch_xml
+from pubmed_models import (
+    Article,
+    MeshMatch,
+    SearchResult,
+    find_api_error,
+    parse_efetch_xml,
+    parse_elink_xml,
+    parse_esearch_xml,
+    parse_mesh_esummary_xml,
+)
 
 PUBMED_WEB_BASE = "https://pubmed.ncbi.nlm.nih.gov/?term="
 
@@ -269,3 +278,52 @@ class PubMedClient:
             for articolo in parse_efetch_xml(xml):
                 per_pmid[articolo.pmid] = articolo
         return [per_pmid[p] for p in ordinati if p in per_pmid]
+
+    def resolve_mesh(self, termine: str) -> MeshMatch | None:
+        """Risolve un termine libero verso il descriptor MeSH ufficiale, se esiste
+        un match esatto sull'intestazione.
+
+        Usa `term={termine}[MeSH Terms:noexp]` su db=mesh: verificato dal vivo,
+        questo campo restituisce Count=1 con l'UID corretto quando il termine
+        corrisponde esattamente a un'intestazione MeSH ufficiale (case-insensitive),
+        Count=0 altrimenti — NCBI stesso arbitra il match, nessuna euristica di
+        somiglianza necessaria qui.
+
+        `parse_esearch_xml` è generico sul formato ESearch: `SearchResult.pmids`
+        conterrà qui UID del database MeSH, non PMID.
+        """
+        xml_ricerca = self._request(
+            "esearch.fcgi",
+            {"db": "mesh", "term": f"{termine}[MeSH Terms:noexp]", "retmode": "xml"},
+        )
+        ricerca = parse_esearch_xml(xml_ricerca)
+        if not ricerca.pmids:
+            return None
+        uid = ricerca.pmids[0]
+        xml_dettaglio = self._request(
+            "esummary.fcgi", {"db": "mesh", "id": uid, "retmode": "xml"}
+        )
+        return parse_mesh_esummary_xml(xml_dettaglio, termine)
+
+    def elink(self, pmid: str, linkname: str, *, max_links: int = 30) -> list[str]:
+        """Trova PMID collegati a `pmid` secondo `linkname`.
+
+        `linkname` è obbligatorio, non opzionale: verificato dal vivo che
+        omettendolo NCBI restituisce tutti i tipi di link insieme, ~1.9 MB anche
+        per un solo PMID. Valori usati in questo progetto: "pubmed_pubmed"
+        (articoli simili), "pubmed_pubmed_citedin" (articoli che citano `pmid`).
+
+        `retmax` non ha effetto su elink (verificato dal vivo): il troncamento a
+        `max_links` avviene qui, lato client, dopo il parsing.
+        """
+        xml = self._request(
+            "elink.fcgi",
+            {
+                "dbfrom": "pubmed",
+                "db": "pubmed",
+                "id": pmid,
+                "linkname": linkname,
+                "retmode": "xml",
+            },
+        )
+        return parse_elink_xml(xml, pmid)[:max_links]
