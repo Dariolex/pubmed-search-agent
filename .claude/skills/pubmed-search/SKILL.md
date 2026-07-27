@@ -137,6 +137,22 @@ Per ogni articolo pertinente: titolo, autori (primi 3), rivista, anno, PMID, e u
 breve motivazione della rilevanza. In testa: la query PubMed generata e il link web.
 Se `total_count` è 0, segnala che la query è troppo restrittiva e proponi come allargarla.
 
+Se `total_count` è maggiore del numero di articoli mostrati (limite `retmax`/`max`),
+dillo esplicitamente e offri di vedere altri risultati con `--retstart <N>` (dove `N`
+è il numero di articoli già mostrati), riusando la stessa query. Esempio:
+`PYTHONPATH=src python -m run_search --term "<query>" --retmax 30 --retstart 30` per
+la pagina successiva.
+
+Se l'utente chiede di esportare i risultati (per Zotero, Mendeley, EndNote, o un
+documento LaTeX), usa `export_results` sul JSON già ottenuto:
+
+```bash
+PYTHONPATH=src python -m run_search --term "<query>" --retmax 30 | PYTHONPATH=src python -m export_results --formato ris > risultati.ris
+```
+
+`--formato` accetta `ris` (reference manager) o `bibtex` (LaTeX). Funziona identico
+sull'output di `related_search`.
+
 Se hai usato il filtro `brevetto`, dillo all'utente in modo esplicito: la ricerca si basa sul
 Conflict of Interest Statement, quindi gli articoli che non pubblicano una dichiarazione di
 conflitto d'interesse non sono raggiungibili in alcun modo — non è un limite della query ma
