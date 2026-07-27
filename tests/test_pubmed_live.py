@@ -108,3 +108,19 @@ def test_filtro_brevetto_reale_restituisce_dichiarazioni(client):
     for art in articoli:
         assert art.coi_statement is not None
         assert "patent" in art.coi_statement.lower()
+
+
+def test_elink_simili_reale_esclude_la_sorgente(client):
+    pmid = "33301246"
+    collegati = client.elink(pmid, "pubmed_pubmed", max_links=10)
+    assert collegati
+    assert pmid not in collegati
+    assert len(collegati) <= 10
+
+
+def test_elink_citazioni_reale_esclude_la_sorgente(client):
+    pmid = "33301246"
+    collegati = client.elink(pmid, "pubmed_pubmed_citedin", max_links=10)
+    assert pmid not in collegati
+    assert len(collegati) <= 10
+    # Un PMID pubblicato può non avere ancora citazioni: non si assume len > 0.
