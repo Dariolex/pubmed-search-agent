@@ -173,6 +173,7 @@ EFETCH_NOMINALE = """<?xml version="1.0" encoding="UTF-8" ?>
         <DescriptorName UI="D007167" MajorTopicYN="Y">Immunotherapy</DescriptorName>
       </MeshHeading>
     </MeshHeadingList>
+    <CoiStatement>The authors are co-inventors of a patent on the described method.</CoiStatement>
   </MedlineCitation>
   <PubmedData>
     <ArticleIdList>
@@ -501,3 +502,26 @@ def test_mesh_match_e_immutabile():
     match = parse_mesh_esummary_xml(MESH_ESUMMARY_MATCH, "melanoma")
     with pytest.raises(Exception):
         match.descriptor = "altro"
+
+
+def test_coi_statement_estratto():
+    art = parse_efetch_xml(EFETCH_NOMINALE)[0]
+    assert art.coi_statement == (
+        "The authors are co-inventors of a patent on the described method."
+    )
+
+
+def test_coi_statement_assente_vale_none():
+    """Un record senza <CoiStatement> non deve produrre stringa vuota:
+    il filtro semantico deve distinguere «nessuna dichiarazione» da «vuota»."""
+    xml = """<?xml version="1.0" encoding="UTF-8" ?>
+<PubmedArticleSet>
+<PubmedArticle>
+  <MedlineCitation>
+    <PMID Version="1">38000002</PMID>
+    <Article><ArticleTitle>Senza dichiarazione COI</ArticleTitle></Article>
+  </MedlineCitation>
+</PubmedArticle>
+</PubmedArticleSet>"""
+    art = parse_efetch_xml(xml)[0]
+    assert art.coi_statement is None

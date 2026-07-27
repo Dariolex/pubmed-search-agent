@@ -100,6 +100,11 @@ class Article:
     `pub_date` resta una stringa ISO parziale ("2024", "2024-03", "2024-03-15")
     perché PubMed ha date genuinamente incomplete; un oggetto date costringerebbe
     a inventare mese e giorno.
+
+    `coi_statement` è la dichiarazione di conflitto d'interesse (<CoiStatement>),
+    None quando l'articolo non ne ha una. È l'unico posto in cui PubMed registra i
+    brevetti degli autori, e va letto per distinguere le dichiarazioni positive
+    («è co-inventore di un brevetto») da quelle negative («non detiene brevetti»).
     """
 
     pmid: str
@@ -111,6 +116,7 @@ class Article:
     pub_types: list[str]
     mesh_terms: list[str]
     doi: str | None
+    coi_statement: str | None = None
 
 
 _MESI = {
@@ -222,6 +228,7 @@ def parse_efetch_xml(xml: str) -> list[Article]:
                     )
                 ],
                 doi=_doi(article, pubmed_article),
+                coi_statement=_text(citazione.find("CoiStatement")) or None,
             )
         )
     return articoli
