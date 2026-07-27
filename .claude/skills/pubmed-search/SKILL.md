@@ -29,7 +29,8 @@ Analizza la richiesta NL e costruisci questo JSON (schema esteso con provenienza
   "filtri": {
     "date": {"da": "<anno>", "a": "<anno>", "tipo": "dp"},
     "tipi_studio": ["<publication type>"],
-    "lingua": "<lingua o null>"
+    "lingua": "<lingua o null>",
+    "brevetto": "<true solo se la richiesta menziona brevetti, altrimenti ometti>"
   }
 }
 ```
@@ -48,6 +49,12 @@ Linee guida per l'estrazione:
 - **Tipi di studio**: "trial randomizzati" → `randomized controlled trial`; "meta-analisi"
   → `meta-analysis`; "review" → `review`. Più tipi vengono uniti in OR automaticamente.
 - **Lingua**: solo se la richiesta la specifica ("in inglese" → `english`).
+- **Brevetto**: imposta `brevetto: true` quando la richiesta chiede articoli i cui autori
+  dichiarano un brevetto ("che dichiarano un brevetto", "con brevetto registrato", "autori
+  con brevetti"). Aggiunge ` AND "patent*"[cois]` alla query. **Attenzione**: PubMed non
+  indicizza i brevetti — il filtro cerca nel Conflict of Interest Statement, che è testo
+  libero. Cattura quindi anche le dichiarazioni *negative* ("gli autori non detengono
+  brevetti"): vanno scartate leggendo `coi_statement` nella fase 5.
 
 `provenienza` non entra nella query: serve a te e all'utente per il debug.
 
@@ -105,6 +112,15 @@ Leggi gli abstract e valuta la pertinenza di ciascun articolo rispetto a
 `intento_originale`. Scarta o declassa i non pertinenti (un articolo può matchare la
 query booleana ma non l'intento reale). Ordina dal più al meno pertinente.
 
+**Se hai attivato il filtro `brevetto`**, leggi anche `coi_statement` di ogni articolo (la
+dichiarazione di conflitto d'interesse) e **scarta le dichiarazioni negative**: frasi come
+"the authors hold no patents", "no ... patent licensing", "declare no competing interests"
+riferite ai brevetti indicano che l'articolo NON dichiara alcun brevetto, pur avendo matchato
+la query booleana. Tieni invece le dichiarazioni positive ("is co-inventor of a patent",
+"filed a patent application", "receives royalties from a patent") e i casi misti, dove almeno
+un autore dichiara un brevetto. Nella presentazione dei risultati, cita la parte pertinente
+della dichiarazione come motivazione.
+
 Segnala anche gli articoli che sembrano pertinenti ma che la query booleana potrebbe
 aver escluso (falsi negativi da query troppo restrittiva), suggerendo un allargamento.
 
@@ -113,3 +129,8 @@ aver escluso (falsi negativi da query troppo restrittiva), suggerendo un allarga
 Per ogni articolo pertinente: titolo, autori (primi 3), rivista, anno, PMID, e una
 breve motivazione della rilevanza. In testa: la query PubMed generata e il link web.
 Se `total_count` è 0, segnala che la query è troppo restrittiva e proponi come allargarla.
+
+Se hai usato il filtro `brevetto`, dillo all'utente in modo esplicito: la ricerca si basa sul
+Conflict of Interest Statement, quindi gli articoli che non pubblicano una dichiarazione di
+conflitto d'interesse non sono raggiungibili in alcun modo — non è un limite della query ma
+di come PubMed indicizza i dati.

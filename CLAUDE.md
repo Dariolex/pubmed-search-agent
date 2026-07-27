@@ -108,11 +108,15 @@ corrispondenze, ma la ricerca è comunque riuscita: quei figli finiscono in
 darebbe una lista vuota indistinguibile da «nessun match».
 
 **Sintassi di ricerca PubMed rilevante da generare in traduzione:**
-- Tag di campo: `[tiab]` (title/abstract), `[MeSH Terms]`, `[au]` (autore), `[ta]` (rivista), `[dp]` (data pubblicazione), `[pt]` (tipo di pubblicazione, es. `"randomized controlled trial"[pt]`), `[la]` (lingua)
+- Tag di campo: `[tiab]` (title/abstract), `[MeSH Terms]`, `[au]` (autore), `[ta]` (rivista), `[dp]` (data pubblicazione), `[pt]` (tipo di pubblicazione, es. `"randomized controlled trial"[pt]`), `[la]` (lingua), `[cois]` (conflict of interest statement)
 - Operatori booleani: `AND`, `OR`, `NOT` (maiuscoli, obbligatori)
 - Intervalli di date: `("2023"[dp] : "2026"[dp])`
 - Esplosione MeSH automatica: PubMed la applica di default sui termini `[MeSH Terms]`; non serve gestirla manualmente
 - Frasi esatte tra virgolette per evitare tokenizzazione indesiderata
+- **Brevetti:** PubMed non li indicizza (nessun campo `[si]` o subset dedicato, verificato
+  dal vivo). L'unico proxy è il Conflict of Interest Statement: `"patent*"[cois]`. È testo
+  libero, quindi cattura anche le dichiarazioni negative; `Article.coi_statement` espone il
+  testo così che il filtro semantico possa scartarle.
 
 ## 5. Traduzione linguaggio naturale → query PubMed
 
