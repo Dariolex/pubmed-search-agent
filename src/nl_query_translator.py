@@ -15,6 +15,7 @@ import argparse
 import json
 import sys
 
+from cli_utils import scrivi_errore
 from pubmed_client import pubmed_web_url
 
 _OPERATORI_VALIDI = {"AND", "OR"}
@@ -158,12 +159,7 @@ def main(argv=None, stdin=None) -> int:
             )
         query = serialize(intermedio)
     except (json.JSONDecodeError, ValueError, OSError) as exc:
-        # Stesso motivo del blocco di scrittura stdout sotto: il messaggio d'errore può
-        # contenere contenuto arbitrario (repr() di campi del JSON utente), quindi va
-        # scritto con lo stesso encoding robusto per evitare UnicodeEncodeError su Windows.
-        sys.stderr.buffer.write(
-            f"Errore: {exc}\n".encode(sys.stderr.encoding or "utf-8", errors="backslashreplace")
-        )
+        scrivi_errore(exc)
         return 1
 
     # Scrivi query con encoding robusto: se stdout non supporta UTF-8, usa backslashreplace

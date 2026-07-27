@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import json
-import sys
 
+from cli_utils import scrivi_errore, stampa_json
 from pubmed_client import PubMedClient, PubMedConfig
 from pubmed_errors import PubMedError
 
@@ -70,13 +69,10 @@ def main(argv=None) -> int:
         client = PubMedClient(PubMedConfig.from_env())
         risultato = esegui(args.pmid, args.tipo, args.max_links, client, args.offset)
     except PubMedError as exc:
-        sys.stderr.buffer.write(
-            f"Errore: {exc}\n".encode(sys.stderr.encoding or "utf-8", errors="backslashreplace")
-        )
+        scrivi_errore(exc)
         return 1
 
-    json.dump(risultato, sys.stdout, ensure_ascii=True, indent=2)
-    sys.stdout.write("\n")
+    stampa_json(risultato)
     return 0
 
 
