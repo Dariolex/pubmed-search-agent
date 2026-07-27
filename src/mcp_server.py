@@ -70,6 +70,9 @@ def search_pubmed_papers(term: str, retmax: int = 50) -> dict:
     naturale: traduci la richiesta dell'utente in questa sintassi prima di
     chiamare il tool.
 
+    `retmax` (default 50) è il numero massimo di articoli da recuperare; viene
+    corretto silenziosamente nell'intervallo 1..200 se fuori range.
+
     Restituisce total_count (match totali su PubMed), translated_query (come NCBI
     ha reinterpretato la query), warnings (es. termini senza corrispondenza) e
     articles (title, abstract, authors, journal, pub_date, pub_types, pmid, ...).
