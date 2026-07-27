@@ -49,7 +49,6 @@ pubmed-search-agent/
 │   ├── pubmed_client.py       # wrapper E-utilities, rate limiting, retry
 │   ├── run_search.py          # entry-point CLI: query -> esearch/efetch -> JSON
 │   ├── nl_query_translator.py # NL → sintassi PubMed
-│   ├── relevance_filter.py    # filtro di pertinenza semantica
 │   ├── mesh_resolver.py       # termini liberi → MeSH controllati
 │   └── mcp_server.py          # tool MCP `search_pubmed_papers`
 ├── tests/
@@ -134,12 +133,19 @@ Separare le due fasi permette di:
 
 ## 6. Filtro di rilevanza semantica
 
-Dopo aver recuperato PMID + abstract via `esummary`/`efetch`, `relevance_filter.py` passa ogni articolo (o un batch) a Claude insieme all'intento originale dell'utente, chiedendo:
-- un punteggio o una classificazione di rilevanza
-- una breve motivazione (perché è o non è pertinente)
-- eventuale segnalazione se l'articolo sembra rilevante ma non ha matchato bene la query booleana (falsi negativi da query troppo restrittiva)
+Il filtro di rilevanza vive **inline nella skill** `/pubmed-search`
+(`.claude/skills/pubmed-search/SKILL.md`, fase 5), non in un modulo Python dedicato:
+dopo aver recuperato PMID + abstract via `run_search`/`related_search`, Claude legge
+titolo e abstract di ogni articolo insieme all'intento originale dell'utente e:
+- scarta o declassa gli articoli non pertinenti, anche se hanno matchato la query booleana
+- segnala eventuali falsi negativi (articoli che sembrano rilevanti ma che la query
+  booleana potrebbe aver escluso, per una restrizione troppo aggressiva)
+- quando il filtro brevetti è attivo, legge anche `coi_statement` per scartare le
+  dichiarazioni negative (vedi sezione 4, tag `[cois]`)
 
-Questo filtro è ciò che distingue il progetto da una semplice interfaccia a ESearch: la query booleana serve a restringere lo spazio di ricerca in modo efficiente, il filtro semantico serve a ordinare/scartare per pertinenza reale.
+Questo filtro è ciò che distingue il progetto da una semplice interfaccia a ESearch: la
+query booleana serve a restringere lo spazio di ricerca in modo efficiente, il filtro
+semantico serve a ordinare/scartare per pertinenza reale.
 
 ## 7. Setup ambiente
 
@@ -162,8 +168,8 @@ Nessuna chiave va mai committata o loggata in chiaro; `pubmed_client.py` deve le
 3. ~~Integrazione end-to-end: query NL → query PubMed → PMID → abstract, tramite
    `run_search.py` e la skill `/pubmed-search`~~ **(completato)**
 4. ~~Filtro di rilevanza: implementato inline nella skill `/pubmed-search` (Claude legge
-   gli abstract e ordina per pertinenza); `relevance_filter.py` come modulo dedicato resta
-   un'evoluzione futura~~ **(completato, inline)**
+   gli abstract e ordina per pertinenza rispetto all'intento originale)~~
+   **(completato, inline)**
 5. ~~`mesh_resolver.py` — risoluzione autoritativa verso il vocabolario MeSH
    controllato di NCBI (`PubMedClient.resolve_mesh`, `db=mesh`), invocata dalla
    skill `/pubmed-search` prima della serializzazione~~ **(completato)**
