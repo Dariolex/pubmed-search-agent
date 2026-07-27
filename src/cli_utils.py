@@ -2,7 +2,8 @@
 cli_utils.py
 
 Helper condivisi dalle CLI del progetto (run_search, mesh_resolver, related_search,
-nl_query_translator): scrittura di errori e output JSON con encoding robusto,
+nl_query_translator, export_results): scrittura di errori e output JSON/testo con
+encoding robusto,
 per evitare UnicodeEncodeError su console Windows con encoding ristretto (es. cp1252)
 quando un messaggio o un campo contiene caratteri non rappresentabili.
 
