@@ -588,3 +588,17 @@ def test_elink_solo_autoriferimento_restituisce_lista_vuota():
 
 def test_elink_nessun_linksetdb_restituisce_lista_vuota():
     assert parse_elink_xml(ELINK_NESSUN_LINKSETDB, "21376230") == []
+
+
+def test_fixture_elink_simili_reale_esclude_la_sorgente():
+    xml = (FIXTURES / "elink_simili.xml").read_text(encoding="utf-8")
+    risultato = parse_elink_xml(xml, "33301246")
+    assert "33301246" not in risultato
+    assert len(risultato) > 0
+
+
+def test_fixture_elink_citazioni_reale_esclude_la_sorgente():
+    xml = (FIXTURES / "elink_citazioni.xml").read_text(encoding="utf-8")
+    risultato = parse_elink_xml(xml, "33301246")
+    assert "33301246" not in risultato
+    assert len(risultato) > 0

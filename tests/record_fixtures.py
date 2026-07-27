@@ -30,6 +30,7 @@ FIXTURES = RADICE / "tests" / "fixtures"
 PMID_ABSTRACT_STRUTTURATO = "33301246"
 PMID_SENZA_ABSTRACT = "1"
 PMID_AUTORE_COLLETTIVO = "42140479"
+PMID_CON_CITAZIONI = "33301246"
 
 
 def _ripulisci(testo: str, chiave: str) -> str:
@@ -139,6 +140,24 @@ def main() -> int:
     tutto_ok &= _verifica("mesh_esummary_match", "DS_MeshTerms" in xml, "contiene DS_MeshTerms")
     tutto_ok &= _verifica("mesh_esummary_match", "Melanoma" in xml, "contiene il descriptor atteso")
     _scrivi("mesh_esummary_match.xml", xml, chiave)
+
+    print("elink_simili.xml — articoli simili a un PMID noto")
+    xml = client._request(
+        "elink.fcgi",
+        {"dbfrom": "pubmed", "db": "pubmed", "id": PMID_CON_CITAZIONI,
+         "linkname": "pubmed_pubmed", "retmode": "xml"},
+    )
+    tutto_ok &= _verifica("elink_simili", "<LinkSetDb>" in xml, "contiene LinkSetDb")
+    _scrivi("elink_simili.xml", xml, chiave)
+
+    print("elink_citazioni.xml — articoli che citano un PMID noto")
+    xml = client._request(
+        "elink.fcgi",
+        {"dbfrom": "pubmed", "db": "pubmed", "id": PMID_CON_CITAZIONI,
+         "linkname": "pubmed_pubmed_citedin", "retmode": "xml"},
+    )
+    tutto_ok &= _verifica("elink_citazioni", "<LinkSetDb>" in xml, "contiene LinkSetDb")
+    _scrivi("elink_citazioni.xml", xml, chiave)
 
     if not tutto_ok:
         print("\nAlcune verifiche sono fallite: sostituire i PMID candidati in cima")
