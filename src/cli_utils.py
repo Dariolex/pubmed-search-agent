@@ -37,3 +37,17 @@ def stampa_json(dati: dict) -> None:
     """
     json.dump(dati, sys.stdout, ensure_ascii=True, indent=2)
     sys.stdout.write("\n")
+
+
+def scrivi_testo(testo: str) -> None:
+    """Scrive testo libero su stdout con encoding robusto.
+
+    A differenza di `stampa_json` non c'è `ensure_ascii` a proteggere l'output:
+    per testo non-JSON (query PubMed, record bibliografici RIS/BibTeX, che
+    possono contenere caratteri reali degli abstract NCBI, es. lettere greche)
+    si usa `sys.stdout.buffer.write` con `errors="backslashreplace"`, stesso
+    pattern già in uso per `scrivi_errore`.
+    """
+    sys.stdout.buffer.write(
+        (testo + "\n").encode(sys.stdout.encoding or "utf-8", errors="backslashreplace")
+    )

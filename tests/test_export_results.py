@@ -1,6 +1,7 @@
 """Test di export_results: conversione JSON -> RIS/BibTeX, interamente offline."""
 
 import json
+import sys
 
 import pytest
 
@@ -118,3 +119,55 @@ def test_main_json_malformato_esce_con_errore(capsys):
     out = capsys.readouterr()
     assert codice == 1
     assert "Errore" in out.err
+
+
+class _BufferFinto:
+    """Doppio di test per uno stream binario: accumula i byte scritti."""
+
+    def __init__(self):
+        self.chunks: list[bytes] = []
+
+    def write(self, dati: bytes) -> int:
+        self.chunks.append(dati)
+        return len(dati)
+
+
+class _StdoutFinto:
+    """Simula uno stdout con encoding realmente restrittivo (cp1252, come su
+    certe console Windows), esponendo `.buffer.write(bytes)` come il vero
+    `sys.stdout.buffer`."""
+
+    def __init__(self, encoding: str):
+        self.encoding = encoding
+        self.buffer = _BufferFinto()
+
+
+def test_main_abstract_con_carattere_greco_non_crasha_su_stdout_ristretto(
+    tmp_path, monkeypatch
+):
+    """Riproduce dal vivo un bug reale trovato durante l'implementazione: un
+    abstract NCBI autentico può contenere lettere greche (es. "ρ" in "ρ-actina").
+    Su una console Windows con stdout.encoding=cp1252, un write testuale diretto
+    (senza passare da cli_utils.scrivi_testo) solleverebbe UnicodeEncodeError.
+
+    Non usiamo capsys: sostituisce stdout con uno stream permissivo (di fatto
+    UTF-8) che non farebbe mai scattare UnicodeEncodeError, mascherando il bug.
+    """
+    articolo_con_greco = {
+        **ARTICOLO_COMPLETO,
+        "abstract": "Studio sulla concentrazione di ρ-actina nel tessuto.",
+    }
+    dati = {"articles": [articolo_con_greco]}
+    percorso = tmp_path / "risultati.json"
+    percorso.write_text(json.dumps(dati), encoding="utf-8")
+
+    stdout_finto = _StdoutFinto("cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout_finto)
+
+    codice = main(argv=["--formato", "ris", "--file", str(percorso)])
+
+    assert codice == 0
+    scritto = b"".join(stdout_finto.buffer.chunks)
+    decodificato = scritto.decode("cp1252")
+    assert "ρ" not in decodificato
+    assert "\\u03c1" in decodificato

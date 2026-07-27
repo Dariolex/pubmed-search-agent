@@ -17,7 +17,7 @@ import argparse
 import json
 import sys
 
-from cli_utils import scrivi_errore
+from cli_utils import scrivi_errore, scrivi_testo
 
 _FORMATI_VALIDI = {"ris", "bibtex"}
 
@@ -104,7 +104,7 @@ def main(argv=None) -> int:
         scrivi_errore(exc)
         return 1
 
-    sys.stdout.write(risultato + "\n")
+    scrivi_testo(risultato)
     return 0
 
 
