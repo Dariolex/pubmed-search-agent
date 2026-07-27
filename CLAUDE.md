@@ -163,8 +163,32 @@ Nessuna chiave va mai committata o loggata in chiaro; `pubmed_client.py` deve le
 5. ~~`mesh_resolver.py` — risoluzione autoritativa verso il vocabolario MeSH
    controllato di NCBI (`PubMedClient.resolve_mesh`, `db=mesh`), invocata dalla
    skill `/pubmed-search` prima della serializzazione~~ **(completato)**
-6. `mcp_server.py` — esposizione come tool MCP `search_pubmed_papers`, utilizzabile da Claude Desktop/Code
+6. ~~`mcp_server.py` — esposizione come tool MCP `search_pubmed_papers` (FastMCP,
+   transport stdio), tool a grana fine che prende una query in sintassi PubMed e
+   restituisce gli articoli con abstract; riusa `run_search.esegui` e un'unica
+   istanza di `PubMedClient` (rate limiter preservato). La traduzione NL e il filtro
+   di rilevanza restano compito del modello client che chiama il tool.~~
+   **(completato)**
 7. (Successivo) supporto a `elink.fcgi` per articoli correlati e catene di citazioni
+
+### Configurazione del server MCP in Claude Desktop/Code
+
+Aggiungere a `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "pubmed-search": {
+      "command": "python",
+      "args": ["C:\\percorso\\assoluto\\src\\mcp_server.py"]
+    }
+  }
+}
+```
+
+Il `.env` (`NCBI_API_KEY`, `NCBI_TOOL_NAME`, `NCBI_EMAIL`) deve essere raggiungibile dal
+processo, oppure le variabili vanno passate in un blocco `"env"` nella stessa config.
+Nuova dipendenza: `mcp[cli]` (vedi `requirements.txt`).
 
 ## 9. Testing
 
