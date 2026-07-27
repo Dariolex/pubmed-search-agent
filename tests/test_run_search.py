@@ -76,6 +76,7 @@ def test_esegui_restituisce_dict_con_articoli(client):
     assert risultato["articles"]
     primo = risultato["articles"][0]
     assert "pmid" in primo and "title" in primo and "abstract" in primo
+    assert "coi_statement" in primo
 
 
 @responses.activate

@@ -30,7 +30,7 @@ Analizza la richiesta NL e costruisci questo JSON (schema esteso con provenienza
     "date": {"da": "<anno>", "a": "<anno>", "tipo": "dp"},
     "tipi_studio": ["<publication type>"],
     "lingua": "<lingua o null>",
-    "brevetto": "<true solo se la richiesta menziona brevetti, altrimenti ometti>"
+    "brevetto": true
   }
 }
 ```
@@ -51,7 +51,8 @@ Linee guida per l'estrazione:
 - **Lingua**: solo se la richiesta la specifica ("in inglese" → `english`).
 - **Brevetto**: imposta `brevetto: true` quando la richiesta chiede articoli i cui autori
   dichiarano un brevetto ("che dichiarano un brevetto", "con brevetto registrato", "autori
-  con brevetti"). Aggiunge ` AND "patent*"[cois]` alla query. **Attenzione**: PubMed non
+  con brevetti"); **ometti** il campo (non impostarlo a `false`) quando non richiesto.
+  Aggiunge ` AND "patent*"[cois]` alla query. **Attenzione**: PubMed non
   indicizza i brevetti — il filtro cerca nel Conflict of Interest Statement, che è testo
   libero. Cattura quindi anche le dichiarazioni *negative* ("gli autori non detengono
   brevetti"): vanno scartate leggendo `coi_statement` nella fase 5.
@@ -104,7 +105,8 @@ PYTHONPATH=src python -m run_search --term "<query generata>" --retmax 30
 
 Restituisce JSON con `total_count`, `translated_query` (come NCBI ha reinterpretato
 la query — utile se i risultati sorprendono), `warnings` e `articles` (con `title`,
-`abstract`, `authors`, `journal`, `pub_date`, `pub_types`, `pmid`).
+`abstract`, `authors`, `journal`, `pub_date`, `pub_types`, `pmid`, `mesh_terms`, `doi`,
+`coi_statement`).
 
 ### 5. Filtra e ordina per rilevanza
 
@@ -114,12 +116,17 @@ query booleana ma non l'intento reale). Ordina dal più al meno pertinente.
 
 **Se hai attivato il filtro `brevetto`**, leggi anche `coi_statement` di ogni articolo (la
 dichiarazione di conflitto d'interesse) e **scarta le dichiarazioni negative**: frasi come
-"the authors hold no patents", "no ... patent licensing", "declare no competing interests"
-riferite ai brevetti indicano che l'articolo NON dichiara alcun brevetto, pur avendo matchato
-la query booleana. Tieni invece le dichiarazioni positive ("is co-inventor of a patent",
-"filed a patent application", "receives royalties from a patent") e i casi misti, dove almeno
-un autore dichiara un brevetto. Nella presentazione dei risultati, cita la parte pertinente
-della dichiarazione come motivazione.
+"the authors hold no patents", "no ... patent licensing", "no patents relevant to this work"
+indicano che l'articolo NON dichiara alcun brevetto, pur avendo matchato la query booleana.
+Il criterio è che la negazione sia riferita **ai brevetti**, non a un conflitto d'interesse
+generico.
+
+Tieni invece le dichiarazioni positive ("is co-inventor of a patent", "filed a patent
+application", "receives royalties from a patent") e i casi misti, dove almeno un autore
+dichiara un brevetto. **Attenzione**: una coda come "the authors declare no *other*
+competing interests" dopo una disclosure di brevetto segnala un POSITIVO, non un negativo —
+è il pattern più frequente di falso scarto. Nella presentazione dei risultati, cita la parte
+pertinente della dichiarazione come motivazione.
 
 Segnala anche gli articoli che sembrano pertinenti ma che la query booleana potrebbe
 aver escluso (falsi negativi da query troppo restrittiva), suggerendo un allargamento.
