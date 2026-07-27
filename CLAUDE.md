@@ -93,7 +93,7 @@ Endpoint principali usati dal progetto:
 | `esearch.fcgi?db=pubmed&term=...` | Esegue la query, restituisce PMID | Usare `usehistory=y` per query con molti risultati; supporta `retmax`, `datetype`, `mindate`/`maxdate` |
 | `esummary.fcgi?db=pubmed&id=...` | Metadati sintetici (titolo, autori, journal, data) | Fase successiva, non nel MVP: `efetch` restituisce già titolo, autori, journal e data insieme all'abstract |
 | `efetch.fcgi?db=pubmed&id=...&rettype=abstract&retmode=xml` | Abstract completo | Necessario per il filtro di rilevanza semantica |
-| `elink.fcgi` | Articoli correlati / citazioni | Fase successiva, non nel MVP |
+| `elink.fcgi?dbfrom=pubmed&db=pubmed&id=...&linkname=...` | Articoli correlati / citazioni | Implementato in `related_search.py` (`PubMedClient.elink`); `linkname` sempre esplicito (`pubmed_pubmed` o `pubmed_pubmed_citedin`), il PMID sorgente va sempre escluso dal risultato |
 
 **Rate limiting:** 3 richieste/secondo senza `api_key`, **10 richieste/secondo** con `api_key` valida. `pubmed_client.py` deve implementare un limitatore esplicito (es. token bucket) e gestire i retry su HTTP 429, non affidarsi solo alla libreria HTTP.
 
