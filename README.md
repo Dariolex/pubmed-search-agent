@@ -40,6 +40,8 @@ The generated query and a direct PubMed link are always shown to you, so you can
 - **Related articles & citation chains** — given a PMID, find similar articles or everything that cites it, via `elink.fcgi`.
 - **Patent / conflict-of-interest filter** — PubMed doesn't index patents directly, so this searches the Conflict of Interest Statement field and exposes the raw disclosure text, so negative declarations ("the authors hold no patents") can be told apart from real positives.
 - **MCP server** — exposes search as an MCP tool (`search_pubmed_papers`) usable from Claude Desktop or any MCP-compatible client, with a rate limiter that survives across calls.
+- **Pagination** — `--retstart` on `run_search`/`related_search` to page past the first batch of results instead of being stuck with a truncated view.
+- **Bibliography export** — pipe any search result into `export_results` to get RIS or BibTeX, ready to import into Zotero, Mendeley, EndNote, or a LaTeX document.
 - **Rate-limit aware** — an explicit token-bucket limiter respects NCBI's 10 req/s cap (with an API key) and retries on 429/5xx.
 
 ## How it's built
@@ -55,6 +57,8 @@ src/
 ├── nl_query_translator.py # deterministic serializer: intermediate JSON → PubMed syntax
 ├── mesh_resolver.py       # CLI: free term → authoritative MeSH descriptor
 ├── related_search.py      # CLI: PMID → similar articles / citing articles
+├── export_results.py      # CLI: search JSON → RIS / BibTeX
+├── cli_utils.py           # shared robust-encoding I/O helpers for all CLIs
 └── mcp_server.py          # MCP tool exposing the search pipeline
 ```
 
@@ -117,6 +121,12 @@ PYTHONPATH=src python -m mesh_resolver --termine "melanoma"
 # Find articles similar to / citing a known PMID
 PYTHONPATH=src python -m related_search --pmid 33301246 --tipo simili --max 30
 PYTHONPATH=src python -m related_search --pmid 33301246 --tipo citazioni --max 30
+
+# Page past the first batch of results (--retstart is 0-based)
+PYTHONPATH=src python -m run_search --term '"melanoma"[tiab]' --retmax 30 --retstart 30
+
+# Export search results as RIS or BibTeX
+PYTHONPATH=src python -m run_search --term '"melanoma"[tiab]' --retmax 30 | PYTHONPATH=src python -m export_results --formato ris > results.ris
 
 # Translate a structured JSON request into PubMed syntax (deterministic, no network)
 PYTHONPATH=src python -m nl_query_translator --file query.json --link

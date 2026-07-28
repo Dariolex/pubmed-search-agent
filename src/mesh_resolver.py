@@ -14,9 +14,8 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import json
-import sys
 
+from cli_utils import scrivi_errore, stampa_json
 from pubmed_client import PubMedClient, PubMedConfig
 from pubmed_errors import PubMedError
 
@@ -32,11 +31,7 @@ def main(argv=None) -> int:
         client = PubMedClient(PubMedConfig.from_env())
         match = client.resolve_mesh(args.termine)
     except PubMedError as exc:
-        # Il messaggio puo' incorporare testo grezzo di NCBI: encoding robusto per
-        # evitare UnicodeEncodeError su console Windows con encoding restrittivo.
-        sys.stderr.buffer.write(
-            f"Errore: {exc}\n".encode(sys.stderr.encoding or "utf-8", errors="backslashreplace")
-        )
+        scrivi_errore(exc)
         return 1
 
     if match is None:
@@ -49,8 +44,7 @@ def main(argv=None) -> int:
     else:
         risultato = dataclasses.asdict(match)
 
-    json.dump(risultato, sys.stdout, ensure_ascii=True, indent=2)
-    sys.stdout.write("\n")
+    stampa_json(risultato)
     return 0
 
 

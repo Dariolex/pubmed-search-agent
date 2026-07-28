@@ -516,3 +516,10 @@ def test_elink_propaga_errore_di_rete(client):
         responses.add(responses.GET, ELINK_URL, status=500)
     with pytest.raises(PubMedHTTPError):
         client.elink("21376230", "pubmed_pubmed")
+
+
+@responses.activate
+def test_elink_offset_salta_i_primi_link(client):
+    responses.add(responses.GET, ELINK_URL, body=ELINK_TRE_LINK, status=200)
+    risultato = client.elink("21376230", "pubmed_pubmed", max_links=2, offset=1)
+    assert risultato == ["222", "333"]

@@ -305,7 +305,7 @@ class PubMedClient:
         )
         return parse_mesh_esummary_xml(xml_dettaglio, termine)
 
-    def elink(self, pmid: str, linkname: str, *, max_links: int = 30) -> list[str]:
+    def elink(self, pmid: str, linkname: str, *, max_links: int = 30, offset: int = 0) -> list[str]:
         """Trova PMID collegati a `pmid` secondo `linkname`.
 
         `linkname` è obbligatorio, non opzionale: verificato dal vivo che
@@ -315,6 +315,9 @@ class PubMedClient:
 
         `retmax` non ha effetto su elink (verificato dal vivo): il troncamento a
         `max_links` avviene qui, lato client, dopo il parsing.
+
+        `offset` sposta la finestra di troncamento (paginazione lato client, dato che
+        elink non supporta un vero retstart/paging lato NCBI).
         """
         xml = self._request(
             "elink.fcgi",
@@ -326,4 +329,4 @@ class PubMedClient:
                 "retmode": "xml",
             },
         )
-        return parse_elink_xml(xml, pmid)[:max_links]
+        return parse_elink_xml(xml, pmid)[offset : offset + max_links]

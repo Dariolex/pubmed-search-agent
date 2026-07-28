@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import json
-import sys
 
+from cli_utils import scrivi_errore, stampa_json
 from pubmed_client import PubMedClient, PubMedConfig
 from pubmed_errors import PubMedError
 
@@ -25,7 +24,7 @@ _LINKNAME_PER_TIPO = {
 }
 
 
-def esegui(pmid: str, tipo: str, max_links: int, client: PubMedClient) -> dict:
+def esegui(pmid: str, tipo: str, max_links: int, client: PubMedClient, offset: int = 0) -> dict:
     """Trova articoli collegati a `pmid` e restituisce un dizionario serializzabile
     in JSON, nello stesso formato di run_search.esegui.
 
@@ -37,7 +36,7 @@ def esegui(pmid: str, tipo: str, max_links: int, client: PubMedClient) -> dict:
         raise ValueError(
             f"tipo non valido: {tipo!r} (ammessi: {', '.join(_LINKNAME_PER_TIPO)})"
         )
-    pmid_collegati = client.elink(pmid, linkname, max_links=max_links)
+    pmid_collegati = client.elink(pmid, linkname, max_links=max_links, offset=offset)
     articoli = client.efetch(pmid_collegati)
     return {
         "total_count": len(pmid_collegati),
@@ -60,19 +59,20 @@ def main(argv=None) -> int:
         "--max", type=int, default=30, dest="max_links",
         help="Numero massimo di articoli collegati da recuperare",
     )
+    parser.add_argument(
+        "--retstart", type=int, default=0, dest="offset",
+        help="Offset per la paginazione (0-based): salta i primi N collegamenti",
+    )
     args = parser.parse_args(argv)
 
     try:
         client = PubMedClient(PubMedConfig.from_env())
-        risultato = esegui(args.pmid, args.tipo, args.max_links, client)
+        risultato = esegui(args.pmid, args.tipo, args.max_links, client, args.offset)
     except PubMedError as exc:
-        sys.stderr.buffer.write(
-            f"Errore: {exc}\n".encode(sys.stderr.encoding or "utf-8", errors="backslashreplace")
-        )
+        scrivi_errore(exc)
         return 1
 
-    json.dump(risultato, sys.stdout, ensure_ascii=True, indent=2)
-    sys.stdout.write("\n")
+    stampa_json(risultato)
     return 0
 
 
